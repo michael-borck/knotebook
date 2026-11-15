@@ -44,7 +44,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRBMkY2QjQwRDBCQ0NCMzUKUldRMXk3elFRR3N2U2xGR0dYN0E2dnpKUGpyUmxRU240SCtSRHVDcXF1R042bEdja0VUaTVQcVcK",
       "endpoints": [
-        "https://github.com/michael-borck/Knotebook/releases/latest/download/latest.json"
+        "https://github.com/michael-borck/knotebook/releases/latest/download/latest.json"
       ]
     }
   }

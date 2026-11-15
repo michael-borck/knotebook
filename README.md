@@ -9,7 +9,7 @@ An LLM-friendly **studio and player** for branching stories, built on
 - **App / Player** — https://knotebook.borck.education/app/
 - **Player directly** — https://knotebook.borck.education/app/?player=1
 - **Store** — https://michael-borck.github.io/knotebook-store/
-- **Releases** — https://github.com/michael-borck/Knotebook/releases
+- **Releases** — https://github.com/michael-borck/knotebook/releases
 - **Submissions** — https://github.com/michael-borck/knotebook-packs
 
 The source repo is public. The site is generated from `landing/` (landing page)
