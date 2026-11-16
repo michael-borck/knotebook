@@ -4,7 +4,6 @@ export interface Theme {
   hint: string
   accent: string
   bg: string
-  artRoot: string
 }
 
 export interface ThemePalette {
@@ -53,7 +52,6 @@ export const THEMES: Theme[] = RAW.map(([id, title, hint, accent, bg]) => ({
   hint,
   accent,
   bg,
-  artRoot: `https://store.swipeverse.app/art/${id}`,
 }))
 
 export const DEFAULT_THEME_ID = 'base'

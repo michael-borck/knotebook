@@ -4,6 +4,37 @@ use std::path::{Path, PathBuf};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 const ASSET_EXTENSIONS: [&str; 6] = ["png", "jpg", "jpeg", "gif", "webp", "avif"];
+const KEYRING_SERVICE: &str = "dev.borck.knotebook";
+const KEYRING_ACCOUNT: &str = "ai-api-key";
+
+fn api_key_entry() -> Result<keyring::Entry, String> {
+  keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn get_api_key() -> Result<Option<String>, String> {
+  let entry = api_key_entry()?;
+  match entry.get_password() {
+    Ok(password) => Ok(Some(password)),
+    Err(keyring::Error::NoEntry) => Ok(None),
+    Err(error) => Err(error.to_string()),
+  }
+}
+
+#[tauri::command]
+fn set_api_key(key: String) -> Result<(), String> {
+  let entry = api_key_entry()?;
+  let trimmed = key.trim().to_string();
+  if trimmed.is_empty() {
+    return match entry.delete_credential() {
+      Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+      Err(error) => Err(error.to_string()),
+    };
+  }
+  entry
+    .set_password(&trimmed)
+    .map_err(|error| error.to_string())
+}
 
 #[tauri::command]
 fn read_text_file(path: String) -> Result<String, String> {
@@ -66,10 +97,11 @@ fn collect_ink_files(root: &Path, dir: &Path, files: &mut Vec<String>) -> std::i
     let file_type = entry.file_type()?;
     if file_type.is_dir() {
       collect_ink_files(root, &path, files)?;
-    } else if file_type.is_file() && is_ink_file(&path) {
-      if let Ok(relative) = path.strip_prefix(root) {
-        files.push(relative.to_string_lossy().replace('\\', "/"));
-      }
+    } else if file_type.is_file()
+      && is_ink_file(&path)
+      && let Ok(relative) = path.strip_prefix(root)
+    {
+      files.push(relative.to_string_lossy().replace('\\', "/"));
     }
   }
   Ok(())
@@ -112,10 +144,11 @@ fn collect_asset_files(
     let file_type = entry.file_type()?;
     if file_type.is_dir() {
       collect_asset_files(&path, base, files)?;
-    } else if file_type.is_file() && is_asset_file(&path) {
-      if let Ok(relative) = path.strip_prefix(base) {
-        files.push(relative.to_string_lossy().replace('\\', "/"));
-      }
+    } else if file_type.is_file()
+      && is_asset_file(&path)
+      && let Ok(relative) = path.strip_prefix(base)
+    {
+      files.push(relative.to_string_lossy().replace('\\', "/"));
     }
   }
   Ok(())
@@ -184,6 +217,8 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       read_text_file,
       read_optional_text_file,
+      get_api_key,
+      set_api_key,
       write_text_file,
       backup_and_write,
       list_ink_files,

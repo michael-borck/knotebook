@@ -9,10 +9,12 @@ import {
 import { Story } from 'inkjs/full'
 import { choose, readTurn } from './lib/ink'
 import { getTheme, themePalette } from './lib/themes'
-import { parsePack, type Pack } from './lib/pack'
+import { parsePack, MAX_PACK_BYTES, type Pack } from './lib/pack'
 import {
   fetchPackBytes,
   parseCatalogue,
+  MAX_CATALOGUE_BYTES,
+  PINNED_STORE_PUBLIC_KEY,
   sha256Hex,
   verifyPackSignature,
   type Catalogue,
@@ -51,18 +53,20 @@ export default function Player() {
   const [toast, setToast] = useState<string | null>(null)
   const storyRef = useRef<Story | null>(null)
 
-  const catalogueUrl = useMemo(() => {
+  const catalogueTarget = useMemo(() => {
     const params = new URLSearchParams(window.location.search)
-    return (
+    const custom =
       params.get('store') ??
-      (import.meta.env.VITE_CATALOGUE_URL as string | undefined) ??
-      'catalogue.json'
-    )
+      (import.meta.env.VITE_CATALOGUE_URL as string | undefined)
+    return { url: custom ?? 'catalogue.json', custom: Boolean(custom) }
   }, [])
+  const catalogueUrl = catalogueTarget.url
 
+  const envStoreKey = (import.meta.env.VITE_STORE_PUBLIC_KEY as string | undefined)?.trim()
   const storePublicKey =
-    (import.meta.env.VITE_STORE_PUBLIC_KEY as string | undefined) ??
-    catalogue?.publicKey
+    envStoreKey ||
+    (catalogueTarget.custom ? catalogue?.publicKey : PINNED_STORE_PUBLIC_KEY)
+  const trustHost = !envStoreKey && catalogueTarget.custom
 
   useEffect(() => {
     let active = true
@@ -107,7 +111,13 @@ export default function Player() {
       setToast('That pack is no longer installed.')
       return
     }
-    const story = new Story(next.stories[0].json)
+    let story: Story
+    try {
+      story = new Story(next.stories[0].json)
+    } catch {
+      setToast('That pack could not be opened.')
+      return
+    }
     storyRef.current = story
     const saved = await loadProgress(next.id)
     if (saved) {
@@ -133,34 +143,46 @@ export default function Player() {
     if (!pack) return
     const story = storyRef.current
     if (!story) return
-    const next = choose(story, index)
-    const nextTurns = next.text ? [...turns, next.text] : turns
-    const nextImage = firstImageTag(next.tags) ?? savedImage
-    setTurns(nextTurns)
-    setSavedImage(nextImage)
-    setPlay(next)
-    void saveProgress(pack.id, {
-      state: story.state.ToJson(),
-      turns: nextTurns,
-      image: nextImage ?? undefined,
-    })
+    try {
+      const next = choose(story, index)
+      const nextTurns = next.text ? [...turns, next.text] : turns
+      const nextImage = firstImageTag(next.tags) ?? savedImage
+      setTurns(nextTurns)
+      setSavedImage(nextImage)
+      setPlay(next)
+      void saveProgress(pack.id, {
+        state: story.state.ToJson(),
+        turns: nextTurns,
+        image: nextImage ?? undefined,
+      })
+    } catch {
+      setToast('That choice could not be played.')
+    }
   }
 
   const handleRestart = () => {
     if (!pack) return
     void clearProgress(pack.id)
-    const story = new Story(pack.stories[0].json)
-    storyRef.current = story
-    const first = readTurn(story)
-    setTurns(first.text ? [first.text] : [])
-    setSavedImage(null)
-    setPlay(first)
+    try {
+      const story = new Story(pack.stories[0].json)
+      storyRef.current = story
+      const first = readTurn(story)
+      setTurns(first.text ? [first.text] : [])
+      setSavedImage(null)
+      setPlay(first)
+    } catch {
+      setToast('That pack could not be restarted.')
+    }
   }
 
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
+    if (file.size > MAX_PACK_BYTES) {
+      setToast('Pack is too large (16 MB limit).')
+      return
+    }
     const { pack: imported, error } = parsePack(await file.text())
     if (!imported) {
       setToast(error ?? 'Could not import that pack.')
@@ -192,7 +214,11 @@ export default function Player() {
       if (!response.ok) {
         throw new Error(`Catalogue not found (${response.status}).`)
       }
-      const { catalogue: parsed, error } = parseCatalogue(await response.text())
+      const text = await response.text()
+      if (text.length > MAX_CATALOGUE_BYTES) {
+        throw new Error('Catalogue too large (2 MB limit).')
+      }
+      const { catalogue: parsed, error } = parseCatalogue(text)
       if (!parsed) throw new Error(error ?? 'Invalid catalogue.')
       setCatalogue(parsed)
     } catch (error) {
@@ -222,9 +248,7 @@ export default function Player() {
       if (digest.toLowerCase() !== entry.sha256.toLowerCase()) {
         throw new Error('Hash mismatch — the pack was rejected.')
       }
-      const publicKey =
-        (import.meta.env.VITE_STORE_PUBLIC_KEY as string | undefined) ??
-        catalogue?.publicKey
+      const publicKey = storePublicKey
       if (publicKey && !verifyPackSignature(entry, bytes, publicKey)) {
         throw new Error('Signature check failed — the pack was rejected.')
       }
@@ -386,7 +410,12 @@ export default function Player() {
               Refresh
             </button>
           </div>
-          {!storePublicKey && (
+          {trustHost && storePublicKey && (
+            <p className="muted small">
+              Catalogue-provided key — this store is trusted by the host.
+            </p>
+          )}
+          {storePublicKey == null && (
             <p className="muted small">
               Unsigned catalogue — downloads are hash-checked only.
             </p>

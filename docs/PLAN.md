@@ -1,7 +1,7 @@
 # Knotebook — build plan
 
-Status: **Phase 0 + 1 complete; Phase 2 first cut (packs + player).** Last
-updated: 2026-11-09.
+Status: **Phases 0–5 first cuts complete; Phase 4 hardening in progress.** Last
+updated: 2026-11-16.
 
 ## Product
 
@@ -124,15 +124,16 @@ Exit: third-party PR → reviewed → signed → installable.
 - `src/lib/catalogue.ts` — `knotebook-catalogue` v1, `parseCatalogue`,
   `sha256Hex`, `fetchPackBytes`.
 - **Ed25519 signing** (`tweetnacl`): `keys:generate`, `store:build --key`,
-  player verification, `VITE_STORE_PUBLIC_KEY` pinning.
+  player verification. The default store pins the public key in
+  `src/lib/catalogue.ts`; `VITE_STORE_PUBLIC_KEY` overrides it for self-hosted
+  catalogues.
 - `scripts/build-catalogue.ts` — hash and sign a folder of packs into a catalogue.
 - `scripts/make-sample-pack.ts` — bundled signed demo store in `public/`.
 - Player **Store** tab: catalogue URL via `?store=` / `VITE_CATALOGUE_URL` /
   `./catalogue.json`; install verifies **SHA-256** and **signature** before
-  IndexedDB.
+  IndexedDB. Packs and catalogues have size caps.
 - `docs/STORE.md`, `templates/submission.json`.
-- Repo scaffolds (`knotebook-packs`, `knotebook-store`) and update detection are
-  still to do.
+- Repo scaffolds (`knotebook-packs`, `knotebook-store`) remain to do.
 
 ### Phase 4 — LLM loop (differentiator)
 Bible + conventions as the generation contract; per-knot structured edits with
@@ -140,12 +141,20 @@ diff review; compile/lint auto-retry; snapshots/rollback. BYO keys, optional
 local Ollama.
 
 **First cut (implemented):**
-- AI tab with provider settings (Ollama / OpenAI-compatible), stored locally.
-- Sends the bible + full script; shows the returned ink as a line diff.
+- AI tab with provider settings (Ollama / OpenAI-compatible).
+- Sends the bible + script; shows the returned ink as a line diff.
 - Apply/discard, with up to 10 snapshots per project/file and restore.
 - **Fix compile errors** sends the current errors back to the model.
-- Still to do: per-knot structured edits, an automatic retry loop, and moving
-  the API key to the OS keychain in Tauri.
+- **Per-knot structured edits**: selecting a knot sends only that knot (plus
+  other knot names as context), merges the revision back into the script, and
+  shows a knot-scoped diff.
+- **Automatic retry loop**: failed revisions go back to the model with the
+  compile/lint errors (up to 3 attempts); scoped retries ask for only the knot.
+- **OS keychain**: the API key is stored with the Rust `keyring` crate (macOS
+  Keychain, Windows Credential Manager, Linux Secret Service); the web app
+  falls back to browser storage and legacy keys are migrated automatically.
+- Still to do: stream tokens into the diff and add per-knot structured JSON
+  edits for multi-knot tasks.
 
 ### Phase 5 — publish + export
 PWA build, Tauri release matrix, auto-update. Then H5P / ChoiceScript / Twine

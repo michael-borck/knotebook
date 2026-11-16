@@ -1,6 +1,7 @@
 # Knotebook packs and store
 
-Status: first cut — static catalogue + SHA-256 install. Signing is next.
+Status: static catalogue + SHA-256 + Ed25519 signatures + pinned key. The default
+store is signed; self-hosted catalogues can override the key at build time.
 
 ## Three artifacts
 
@@ -57,7 +58,7 @@ Generate a keypair once:
 
 ```bash
 npm run keys:generate
-# keys/store-public.txt  — commit or pin in the app
+# keys/store-public.txt  — commit; the default app pins this key
 # keys/store-secret.txt  — gitignored; keep offline
 ```
 
@@ -75,10 +76,13 @@ Each entry gets a `signature`; the catalogue gets a `publicKey`.
 
 Player verification:
 
-- `VITE_STORE_PUBLIC_KEY` pinned at build time → **secure mode**; unsigned or
-  mismatched packs are rejected.
-- Otherwise the catalogue's `publicKey` is used (trust the host).
-- Neither → hash-only install, labelled "Unsigned catalogue".
+- The default store pins the public key in `src/lib/catalogue.ts`
+  (`PINNED_STORE_PUBLIC_KEY`).
+- `VITE_STORE_PUBLIC_KEY` overrides the pin for a self-hosted catalogue.
+- A custom `?store=` catalogue without an override uses the key from the
+  catalogue and is labelled "Catalogue-provided key — this store is trusted by
+  the host".
+- No key → hash-only install, labelled "Unsigned catalogue".
 
 Pinning the key is the secure mode: a tampered catalogue cannot swap both the
 key and the signature.
@@ -87,7 +91,9 @@ key and the signature.
 
 - Open **Store** in the player.
 - URL resolution order: `?store=<url>` → `VITE_CATALOGUE_URL` → `./catalogue.json`.
-- Install: download → **SHA-256 check** → schema validation → IndexedDB.
+- Install: download → **SHA-256 check** → **Ed25519 signature** → schema and
+  story validation → IndexedDB.
+- Packs are capped at 16 MB; catalogues at 2 MB.
 - Direct **Import pack** stays available for sideloading and classrooms.
 
 ## Submission model (PR, Lorekeeper-style)
@@ -123,8 +129,12 @@ pack version.
 
 - Packs are **inert data** (compiled ink + assets). No arbitrary HTML/JS.
 - SHA-256 prevents corrupt or swapped downloads.
-- Ed25519 signatures (next) prove publisher provenance.
-- If packs ever carry HTML/JS widgets, add a sandboxed iframe like Lorekeeper.
+- Ed25519 signatures prove publisher provenance; the default catalogue key is
+  pinned in the app.
+- The standalone HTML export escapes story text and assets; exported files do
+  not include a CSP.
+- Keep `keys/store-secret.txt` offline. To rotate, generate a new keypair, re-sign
+  the catalogue, update `PINNED_STORE_PUBLIC_KEY`, and publish.
 
 ## Who it is for
 
@@ -138,6 +148,6 @@ pack version.
 
 ## Next
 
-1. Ed25519 signing + verification (`@noble/ed25519`).
-2. Scaffold `knotebook-packs` and `knotebook-store`.
-3. Update detection (catalogue version newer than installed).
+1. Scaffold `knotebook-packs` and `knotebook-store`.
+2. Catalogue theme filters.
+3. Pack version negotiation for future pack formats.

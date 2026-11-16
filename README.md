@@ -37,14 +37,17 @@ Themes reuse the Swipeverse art sets (`noir`, `kingdom`, `cyberpunk`, …).
 
 ## AI assistant
 
-The Studio's **AI** tab sends the story bible and the full script to an
+The Studio's **AI** tab sends the story bible and the script to an
 OpenAI-compatible chat endpoint, then shows the returned ink as a **diff**;
 nothing is applied until you click Apply.
 
 - **Providers** — Ollama (default `gemma3:4b`) or any OpenAI-compatible endpoint.
-  The API key is stored locally in the browser profile; use a limited-scope key.
-- **Scope** — whole story or a single knot. A knot edit replaces only that knot
-  and preserves everything else.
+  In the desktop app the API key goes to the OS keychain (macOS Keychain,
+  Windows Credential Manager, Linux Secret Service); the web app falls back to
+  this browser profile. Use a limited-scope key.
+- **Scope** — whole story or a single knot. A knot edit sends only that knot
+  (plus the list of other knot names for context), replaces only that knot, and
+  reviews a knot-scoped diff.
 - **Automatic retries** — failing revisions are sent back to the model (up to 3
   attempts) with the compile/lint errors before you review the diff.
 - **Snapshots** — the last 10 versions are kept per project/file; restore from

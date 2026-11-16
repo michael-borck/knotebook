@@ -1,9 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import Root from './Root'
 import './index.css'
-import App from './App.tsx'
-import Player from './Player.tsx'
-import UpdateBanner from './components/UpdateBanner'
 
 const isPlayer = new URLSearchParams(window.location.search).has('player')
 const inTauri = '__TAURI_INTERNALS__' in window
@@ -18,7 +16,6 @@ if (!inTauri && 'serviceWorker' in navigator) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <UpdateBanner />
-    {isPlayer ? <Player /> : <App />}
+    <Root isPlayer={isPlayer} />
   </StrictMode>,
 )

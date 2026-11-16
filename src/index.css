@@ -36,6 +36,11 @@ body,
   flex-direction: column;
 }
 
+.loading {
+  padding: 24px;
+  color: var(--muted);
+}
+
 button {
   font: inherit;
   color: inherit;

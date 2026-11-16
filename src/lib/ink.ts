@@ -25,27 +25,35 @@ export interface CompileInput {
 
 class MemoryFileHandler implements IFileHandler {
   private readonly files: Record<string, string>
-  private readonly rootDir: string
+  private readonly open: Array<{ raw: string; resolved: string }> = []
+  private readonly pending = new Map<string, string>()
 
-  constructor(files: Record<string, string>, rootFile: string) {
+  constructor(files: Record<string, string>) {
     this.files = files
-    this.rootDir = dirname(rootFile)
   }
 
   readonly ResolveInkFilename = (
     filename: string,
     sourceFilename?: string | null,
   ): string => {
-    // The root parser asks for its own source file (no sourceFilename).
-    if (sourceFilename == null) return normalizePath(filename)
-    // INCLUDE paths resolve relative to the root file's folder, as in inklecate.
-    return normalizePath(joinPath(this.rootDir, filename))
+    const target = normalizePath(filename)
+    if (sourceFilename == null) {
+      this.pending.set(target, target)
+      return target
+    }
+    const sourceKey = normalizePath(sourceFilename)
+    const frame = [...this.open].reverse().find((item) => item.raw === sourceKey)
+    const base = frame ? dirname(frame.resolved) : dirname(sourceKey)
+    const resolved = normalizePath(joinPath(base, target))
+    this.pending.set(resolved, target)
+    return resolved
   }
 
   readonly LoadInkFileContents = (filename: string): string => {
     const key = normalizePath(filename)
     const contents = this.files[key]
     if (contents == null) throw new Error(`Cannot open ${filename}`)
+    this.open.push({ raw: this.pending.get(key) ?? key, resolved: key })
     return contents
   }
 }
@@ -62,7 +70,7 @@ export function compileInk(source: string, input?: CompileInput): CompileResult 
           [],
           false,
           null,
-          new MemoryFileHandler(input.files, input.rootFile),
+          new MemoryFileHandler(input.files),
         )
       : null
   const compiler = new Compiler(source, options)

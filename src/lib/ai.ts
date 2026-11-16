@@ -42,7 +42,7 @@ export function loadAiSettings(): AiSettings {
         typeof value.model === 'string' && value.model
           ? value.model
           : DEFAULT_AI_SETTINGS.model,
-      apiKey: typeof value.apiKey === 'string' ? value.apiKey : '',
+      apiKey: '',
     }
   } catch {
     return { ...DEFAULT_AI_SETTINGS }
@@ -51,7 +51,34 @@ export function loadAiSettings(): AiSettings {
 
 export function saveAiSettings(settings: AiSettings): void {
   try {
-    localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(settings))
+    const persisted: Partial<AiSettings> = { ...settings }
+    delete persisted.apiKey
+    localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(persisted))
+  } catch {
+    // Settings are best-effort.
+  }
+}
+
+export function takeLegacyApiKey(): string {
+  try {
+    const raw = localStorage.getItem(AI_SETTINGS_KEY)
+    if (!raw) return ''
+    const value = JSON.parse(raw) as Partial<AiSettings>
+    return typeof value.apiKey === 'string' ? value.apiKey.trim() : ''
+  } catch {
+    return ''
+  }
+}
+
+export function clearLegacyApiKey(): void {
+  try {
+    const raw = localStorage.getItem(AI_SETTINGS_KEY)
+    if (!raw) return
+    const value = JSON.parse(raw) as Partial<AiSettings>
+    if (!('apiKey' in value)) return
+    const persisted: Partial<AiSettings> = { ...value }
+    delete persisted.apiKey
+    localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(persisted))
   } catch {
     // Settings are best-effort.
   }
@@ -77,49 +104,82 @@ export interface GenerateOptions {
   bible: StoryBible
   source: string
   instruction: string
+  context?: string
   signal?: AbortSignal
 }
 
+const REQUEST_TIMEOUT_MS = 120_000
+
+function isLocalBaseUrl(baseUrl: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(baseUrl)
+}
+
 export async function generateInk(options: GenerateOptions): Promise<string> {
-  const { settings, bible, source, instruction, signal } = options
+  const { settings, bible, source, instruction, context, signal } = options
   const baseUrl = settings.baseUrl.replace(/\/+$/, '')
   const task =
     instruction.trim() ||
     'Continue and improve the story while preserving the conventions.'
+  if (settings.apiKey.trim() && !baseUrl.startsWith('https://') && !isLocalBaseUrl(baseUrl)) {
+    throw new Error(
+      'Refusing to send an API key over plain HTTP. Use HTTPS or a local endpoint.',
+    )
+  }
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    signal,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(settings.apiKey.trim()
-        ? { Authorization: `Bearer ${settings.apiKey.trim()}` }
-        : {}),
-    },
-    body: JSON.stringify({
-      model: settings.model,
-      stream: false,
-      temperature: 0.7,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: [
-            'Story bible (JSON):',
-            JSON.stringify(bible, null, 2),
-            '',
-            'Current ink source:',
-            '```ink',
-            source,
-            '```',
-            '',
-            'Task:',
-            task,
-          ].join('\n'),
-        },
-      ],
-    }),
-  })
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  if (signal?.aborted) {
+    controller.abort()
+  } else {
+    signal?.addEventListener('abort', abort, { once: true })
+  }
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+
+  let response: Response
+  try {
+    response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(settings.apiKey.trim()
+          ? { Authorization: `Bearer ${settings.apiKey.trim()}` }
+          : {}),
+      },
+      body: JSON.stringify({
+        model: settings.model,
+        stream: false,
+        temperature: 0.7,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: [
+              'Story bible (JSON):',
+              JSON.stringify(bible, null, 2),
+              '',
+              ...(context ? ['Context:', context, ''] : []),
+              'Current ink source:',
+              '```ink',
+              source,
+              '```',
+              '',
+              'Task:',
+              task,
+            ].join('\n'),
+          },
+        ],
+      }),
+    })
+  } catch (error) {
+    if (!signal?.aborted && controller.signal.aborted) {
+      throw new Error('AI request timed out.')
+    }
+    throw error
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', abort)
+  }
 
   if (!response.ok) {
     const detail = (await response.text()).slice(0, 400)
@@ -150,6 +210,7 @@ export async function generateInk(options: GenerateOptions): Promise<string> {
 
 export interface GenerateWithRetryOptions {
   maxAttempts?: number
+  scopedKnot?: string
   generate: (source: string, instruction: string) => Promise<string>
   validate: (source: string) => Issue[]
   onAttempt?: (attempt: number) => void
@@ -189,7 +250,9 @@ export async function generateWithRetry(
     feedback = [
       instruction,
       '',
-      'The previous revision had errors. Fix them and return the complete corrected script.',
+      options.scopedKnot
+        ? `The previous revision of the knot "${options.scopedKnot}" had errors. Fix them and return only that knot, including its === ${options.scopedKnot} === header.`
+        : 'The previous revision had errors. Fix them and return the complete corrected script.',
       ...errors.map(
         (issue) =>
           `${issue.line != null ? `line ${issue.line}: ` : ''}${issue.message}`,

@@ -8,7 +8,12 @@ import { DEFAULT_BIBLE } from '../src/lib/bible'
 import { buildPack, parsePack } from '../src/lib/pack'
 import { parseGraph } from '../src/lib/graph'
 import { compareVersions } from '../src/lib/version'
-import { extractInk, generateWithRetry } from '../src/lib/ai'
+import {
+  DEFAULT_AI_SETTINGS,
+  extractInk,
+  generateInk,
+  generateWithRetry,
+} from '../src/lib/ai'
 import { replaceKnot, sliceKnot } from '../src/lib/inkSource'
 import { CATALOGUE_FORMAT, parseCatalogue, sha256Hex, verifyPackSignature } from '../src/lib/catalogue'
 
@@ -48,6 +53,15 @@ check('html doctype', html.startsWith('<!doctype html>'))
 check('html runtime inlined', html.includes('inkjs'))
 check('html escaped title', html.includes('Smoke &amp; &lt;Test&gt;'))
 
+const xssHtml = buildStandaloneHtml({
+  title: 'XSS',
+  json: compiled.json,
+  runtimeSource: 'var x = "</script>";',
+  cover: '</script><script>alert(1)</script>',
+})
+check('html escapes cover', !xssHtml.includes('</script><script>alert(1)'))
+check('html escapes runtime close tag', !xssHtml.includes('var x = "</script>"'))
+
 const start = html.indexOf('var STORY_JSON=') + 'var STORY_JSON='.length
 const end = html.indexOf(';var ASSETS=', start)
 check('story json embedded', end > start)
@@ -77,6 +91,12 @@ check(
     compareVersions('0.9.0', '1.0.0') < 0,
 )
 check(
+  'version compare prerelease',
+  compareVersions('1.0.0-beta', '1.0.0') < 0 &&
+    compareVersions('1.0.0', '1.0.0-beta') > 0 &&
+    compareVersions('1.0.0-beta.2', '1.0.0-beta.1') > 0,
+)
+check(
   'extractInk fenced',
   extractInk('Here:\n```ink\n=== start ===\nHi\n```\n')?.includes(
     '=== start ===',
@@ -87,6 +107,24 @@ check(
   extractInk('=== start ===\nHi\n-> END')?.includes('=== start ===') === true,
 )
 check('extractInk rejects prose', extractInk('Sure, here is a story.') === null)
+
+let httpKeyError = ''
+try {
+  await generateInk({
+    settings: {
+      ...DEFAULT_AI_SETTINGS,
+      provider: 'openai',
+      baseUrl: 'http://example.com/v1',
+      apiKey: 'secret',
+    },
+    bible: DEFAULT_BIBLE,
+    source: '=== start ===\nHi\n-> END\n',
+    instruction: 'x',
+  })
+} catch (error) {
+  httpKeyError = error instanceof Error ? error.message : ''
+}
+check('ai refuses keys over plain http', httpKeyError.includes('plain HTTP'))
 
 const retryCalls: string[] = []
 const retryResult = await generateWithRetry('original', 'fix it', {
@@ -120,6 +158,24 @@ check(
   alwaysBad.attempts === 2 && alwaysBad.errors.length === 1,
 )
 
+const scopedFeedback: string[] = []
+await generateWithRetry('=== a ===\nA\n', 'edit it', {
+  maxAttempts: 3,
+  scopedKnot: 'a',
+  generate: async (_candidate, feedback) => {
+    scopedFeedback.push(feedback)
+    return scopedFeedback.length === 1 ? 'invalid' : '=== a ===\nFixed\n'
+  },
+  validate: (candidate) =>
+    candidate === 'invalid'
+      ? [{ severity: 'error' as const, message: 'bad', source: 'ink' as const }]
+      : [],
+})
+check(
+  'ai scoped retry names the knot',
+  scopedFeedback[1]?.includes('knot "a"') === true,
+)
+
 const knotSource = '=== a ===\nA\n\n=== b ===\nB\n-> END\n'
 check('sliceKnot', sliceKnot(knotSource, 'a') === '=== a ===\nA')
 const replaced = replaceKnot(knotSource, 'a', 'A revised')
@@ -147,6 +203,19 @@ check(
 const parsedPack = parsePack(JSON.stringify(pack))
 check('pack round-trips', parsedPack.pack?.title === 'Smoke Pack')
 check('pack rejects junk', parsePack('{"nope":true}').pack === null)
+check(
+  'pack rejects future versions',
+  parsePack(JSON.stringify({ ...pack, version: 2 })).pack === null,
+)
+check(
+  'pack rejects invalid story json',
+  parsePack(
+    JSON.stringify({
+      ...pack,
+      stories: [{ id: 'main', title: 'Smoke Pack', json: 'not json' }],
+    }),
+  ).pack === null,
+)
 
 const coverData = 'data:image/png;base64,AAAA'
 const assetPack = buildPack({
@@ -211,15 +280,26 @@ if (multi.ok) {
 
 const subFiles: Record<string, string> = {
   'sub/main.ink': 'INCLUDE act1.ink\n\n-> start\n\n=== start ===\nSub main.\n-> act1\n',
-  'sub/act1.ink': '=== act1 ===\nSub act.\n-> END\n',
+  'sub/act1.ink': 'INCLUDE b.ink\n\n=== act1 ===\nSub act.\n-> subb\n',
+  'sub/b.ink': '=== subb ===\nSub b.\n-> END\n',
+  'b.ink': '=== rootb ===\nRoot b.\n-> END\n',
 }
 const sub = compileInk(subFiles['sub/main.ink'], {
   files: subFiles,
   rootFile: 'sub/main.ink',
 })
 check('subfolder include resolves', sub.ok)
+if (sub.ok) {
+  const subStory = new Story(sub.json)
+  let subText = ''
+  while (subStory.canContinue) subText += subStory.Continue()
+  check(
+    'nested include resolves relative to the including file',
+    subText.includes('Sub b') && !subText.includes('Root b'),
+  )
+}
 
-const graph = parseGraph({ 'story.ink': source }, 'story.ink')
+const graph = parseGraph({ 'story.ink': source })
 check(
   'graph finds knots',
   ['start', 'climb', 'shore', 'reach', 'keep', 'walk', 'light'].every(
@@ -235,7 +315,7 @@ check(
   graph.nodes.find((node) => node.id === 'start')?.entry === true,
 )
 
-const multiGraph = parseGraph(multiFiles, 'main.ink')
+const multiGraph = parseGraph(multiFiles)
 check(
   'graph follows includes',
   ['start', 'act1', 'act2'].every((id) =>
@@ -247,7 +327,7 @@ const stitchFiles = {
   'main.ink':
     '-> a\n\n=== a ===\nIntro.\n-> one\n\n= one\nOne.\n-> two\n\n= two\nTwo.\n-> END\n',
 }
-const stitchGraph = parseGraph(stitchFiles, 'main.ink')
+const stitchGraph = parseGraph(stitchFiles)
 check(
   'graph includes stitches',
   stitchGraph.nodes.some((node) => node.id === 'a.one') &&
@@ -281,13 +361,10 @@ readTurn(coverageStory, (path) => {
 })
 check('coverage captures entry knot', coveredPaths.has('start'))
 
-const flagGraph = parseGraph(
-  {
-    'main.ink':
-      '-> a\n\n=== a ===\nNothing happens here.\n\n=== b ===\nThe end.\n-> END\n',
-  },
-  'main.ink',
-)
+const flagGraph = parseGraph({
+  'main.ink':
+    '-> a\n\n=== a ===\nNothing happens here.\n\n=== b ===\nThe end.\n-> END\n',
+})
 check(
   'graph detects dead end',
   flagGraph.nodes.find((node) => node.id === 'a')?.deadEnd === true,

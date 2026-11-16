@@ -1,7 +1,9 @@
+import { Story } from 'inkjs/full'
 import type { StoryBible } from './bible'
 
 export const PACK_FORMAT = 'knotebook-pack'
 export const PACK_VERSION = 1
+export const MAX_PACK_BYTES = 16 * 1024 * 1024
 
 export interface PackStory {
   id: string
@@ -71,7 +73,7 @@ export function isPack(value: unknown): value is Pack {
   const pack = value as Partial<Pack>
   return (
     pack.format === PACK_FORMAT &&
-    typeof pack.version === 'number' &&
+    pack.version === PACK_VERSION &&
     typeof pack.id === 'string' &&
     typeof pack.title === 'string' &&
     typeof pack.theme === 'string' &&
@@ -88,7 +90,9 @@ export function isPack(value: unknown): value is Pack {
         story !== null &&
         typeof story === 'object' &&
         typeof story.id === 'string' &&
-        typeof story.json === 'string',
+        typeof story.title === 'string' &&
+        typeof story.json === 'string' &&
+        story.json.length > 0,
     )
   )
 }
@@ -97,6 +101,9 @@ export function parsePack(text: string): {
   pack: Pack | null
   error: string | null
 } {
+  if (text.length > MAX_PACK_BYTES) {
+    return { pack: null, error: 'That pack is too large (16 MB limit).' }
+  }
   let value: unknown
   try {
     value = JSON.parse(text)
@@ -107,6 +114,11 @@ export function parsePack(text: string): {
     return { pack: null, error: 'That file is not a Knotebook pack.' }
   }
   const pack = value as Pack
+  try {
+    for (const story of pack.stories) new Story(story.json)
+  } catch {
+    return { pack: null, error: 'That pack contains an invalid story.' }
+  }
   return {
     pack: {
       ...pack,

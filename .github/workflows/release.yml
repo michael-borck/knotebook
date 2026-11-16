@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   release:
-    uses: michael-borck/app-hq/.github/workflows/tauri-release.yml@main
+    uses: michael-borck/app-hq/.github/workflows/tauri-release.yml@85518c25d0759b6e50ff3f079dbf1ee42ea030ac
     with:
       product-name: Knotebook
       preflight-command: npm run typecheck && npm run lint && npm run smoke

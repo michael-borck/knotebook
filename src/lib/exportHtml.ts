@@ -56,6 +56,7 @@ const READER_JS = `
   var scene = document.getElementById('scene');
   var cover = document.getElementById('cover');
   var currentImage = null;
+  var history = [];
   var SAVE_KEY = 'knotebook:' + document.title;
 
   if (COVER) {
@@ -73,10 +74,12 @@ const READER_JS = `
   function applyTags(tags) {
     if (!tags) return;
     for (var i = 0; i < tags.length; i += 1) {
-      var match = /^(?:image|bg):\s*(.+)$/i.exec(String(tags[i]).trim());
+      var match = /^(?:image|bg):\\s*(.+)$/i.exec(String(tags[i]).trim());
       if (!match) continue;
       var key = match[1].trim();
-      var src = ASSETS[key] || ASSETS['assets/' + key];
+      var src = Object.prototype.hasOwnProperty.call(ASSETS, key)
+        ? ASSETS[key]
+        : ASSETS['assets/' + key];
       if (src) {
         currentImage = src;
         scene.src = src;
@@ -87,10 +90,11 @@ const READER_JS = `
   }
 
   function paint(text) {
+    history.push(text);
     var blocks = text.split(/\\n{2,}/);
     var html = '';
     for (var i = 0; i < blocks.length; i += 1) {
-      var block = blocks[i].replace(/\\n/g, '<br>');
+      var block = esc(blocks[i]).replace(/\\n/g, '<br>');
       if (block.trim()) html += '<p>' + block + '</p>';
     }
     out.insertAdjacentHTML('beforeend', html);
@@ -103,7 +107,7 @@ const READER_JS = `
         SAVE_KEY,
         JSON.stringify({
           state: story.state.ToJson(),
-          html: out.innerHTML,
+          history: history,
           image: currentImage,
         }),
       );
@@ -151,7 +155,10 @@ const READER_JS = `
       if (!raw) return false;
       var saved = JSON.parse(raw);
       story.state.LoadJson(saved.state);
-      out.innerHTML = saved.html || '';
+      out.innerHTML = '';
+      (saved.history || []).forEach(function (entry) {
+        paint(entry);
+      });
       if (saved.image) {
         currentImage = saved.image;
         scene.src = saved.image;
@@ -170,6 +177,7 @@ const READER_JS = `
     out.innerHTML = '';
     choicesEl.innerHTML = '';
     currentImage = null;
+    history = [];
     scene.removeAttribute('src');
     scene.hidden = true;
     window.scrollTo(0, 0);
@@ -201,7 +209,8 @@ export function buildStandaloneHtml({
   const safeTitle = escapeHtml(title)
   const storyJson = JSON.stringify(json).replace(/</g, '\\u003c')
   const assetsJson = JSON.stringify(assets ?? {}).replace(/</g, '\\u003c')
-  const coverJson = JSON.stringify(cover ?? '')
+  const coverJson = JSON.stringify(cover ?? '').replace(/</g, '\\u003c')
+  const runtime = runtimeSource.replace(/<\/script/gi, '<\\/script')
   const themeCss = theme
     ? `:root{--bg:${theme.bg};--panel:${theme.panel};--text:${theme.text};--muted:${theme.muted};--accent:${theme.accent};--border:${theme.border};}`
     : ''
@@ -227,7 +236,7 @@ export function buildStandaloneHtml({
     '</head>',
     '<body>',
     body,
-    `<script>${runtimeSource}</script>`,
+    `<script>${runtime}</script>`,
     `<script>var STORY_JSON=${storyJson};var ASSETS=${assetsJson};var COVER=${coverJson};${READER_JS}</script>`,
     '</body>',
     '</html>',

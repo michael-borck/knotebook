@@ -50,10 +50,7 @@ const DIVERT_RE = /->\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)/g
 const KEYWORD_TARGETS = new Set(['END', 'DONE'])
 const WORD_RE = /[A-Za-z0-9][A-Za-z0-9'’-]*/g
 
-export function parseGraph(
-  files: Record<string, string>,
-  rootFile?: string,
-): Graph {
+export function parseGraph(files: Record<string, string>): Graph {
   const rawNodes = new Map<string, RawNode>()
   const rawEdges: RawEdge[] = []
   let firstKnot: string | null = null
@@ -253,7 +250,6 @@ export function parseGraph(
     }
   }
 
-  void rootFile
   return { nodes, edges }
 }
 

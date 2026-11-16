@@ -6,18 +6,21 @@ import {
   PROVIDER_DEFAULTS,
   generateInk,
   generateWithRetry,
+  clearLegacyApiKey,
   loadAiSettings,
   saveAiSettings,
+  takeLegacyApiKey,
   type AiProvider,
   type AiSettings,
 } from '../lib/ai'
+import { loadApiKey, saveApiKey } from '../lib/secrets'
 import {
   clearSnapshots,
   loadSnapshots,
   saveSnapshot,
   type Snapshot,
 } from '../lib/snapshots'
-import { replaceKnot } from '../lib/inkSource'
+import { replaceKnot, sliceKnot } from '../lib/inkSource'
 
 interface AiPanelProps {
   source: string
@@ -47,17 +50,20 @@ export default function AiPanel({
   const [status, setStatus] = useState<Status>('idle')
   const [error, setError] = useState<string | null>(null)
   const [proposal, setProposal] = useState<string | null>(null)
+  const [proposalScope, setProposalScope] = useState('')
   const [attempt, setAttempt] = useState(0)
   const [retryNote, setRetryNote] = useState<string | null>(null)
   const [snapshots, setSnapshots] = useState<Snapshot[]>(() =>
     loadSnapshots(snapshotKey),
   )
   const [saved, setSaved] = useState(false)
+  const [keyWarning, setKeyWarning] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     setSnapshots(loadSnapshots(snapshotKey))
     setProposal(null)
+    setProposalScope('')
     setStatus('idle')
     setError(null)
     setAttempt(0)
@@ -68,9 +74,44 @@ export default function AiPanel({
     if (scope && !knots.includes(scope)) setScope('')
   }, [knots, scope])
 
+  useEffect(() => {
+    let cancelled = false
+    const hydrate = async () => {
+      const legacy = takeLegacyApiKey()
+      if (legacy) {
+        if (await saveApiKey(legacy)) {
+          clearLegacyApiKey()
+        } else {
+          setKeyWarning(true)
+        }
+      }
+      const stored = legacy || (await loadApiKey())
+      if (!cancelled && stored) {
+        setSettings((previous) => ({ ...previous, apiKey: stored }))
+      }
+    }
+    void hydrate()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const scopedSource = useMemo(
+    () => (proposalScope ? (sliceKnot(source, proposalScope) ?? source) : source),
+    [source, proposalScope],
+  )
+  const scopedProposal = useMemo(
+    () =>
+      proposal == null
+        ? null
+        : proposalScope
+          ? (sliceKnot(proposal, proposalScope) ?? proposal)
+          : proposal,
+    [proposal, proposalScope],
+  )
   const diff = useMemo(
-    () => (proposal == null ? [] : diffLines(source, proposal)),
-    [source, proposal],
+    () => (scopedProposal == null ? [] : diffLines(scopedSource, scopedProposal)),
+    [scopedSource, scopedProposal],
   )
   const errors = issues.filter((issue) => issue.severity === 'error')
 
@@ -90,9 +131,15 @@ export default function AiPanel({
     }))
   }
 
-  const saveSettings = () => {
+  const persistSettings = async () => {
+    const stored = await saveApiKey(settings.apiKey)
+    setKeyWarning(!stored && settings.apiKey.trim().length > 0)
     saveAiSettings(settings)
     setSaved(true)
+  }
+
+  const saveSettings = () => {
+    void persistSettings()
   }
 
   const runWith = async (task: string, effectiveScope: string) => {
@@ -102,11 +149,14 @@ export default function AiPanel({
       setStatus('error')
       return
     }
+    const storedKey = await saveApiKey(settings.apiKey)
+    setKeyWarning(!storedKey && settings.apiKey.trim().length > 0)
     saveAiSettings(settings)
     setSaved(true)
     setStatus('running')
     setError(null)
     setProposal(null)
+    setProposalScope(effectiveScope)
     setAttempt(0)
     setRetryNote(null)
     const scopedTask = effectiveScope
@@ -121,12 +171,19 @@ export default function AiPanel({
     try {
       const result = await generateWithRetry(source, scopedTask, {
         maxAttempts: 3,
+        scopedKnot: effectiveScope || undefined,
         generate: async (candidate, feedback) => {
+          const candidateSource = effectiveScope
+            ? (sliceKnot(candidate, effectiveScope) ?? candidate)
+            : candidate
           const block = await generateInk({
             settings,
             bible,
-            source: candidate,
+            source: candidateSource,
             instruction: feedback,
+            context: effectiveScope
+              ? `The story also contains these knots: ${knots.join(', ')}. Only the selected knot is shown below; do not return the others.`
+              : undefined,
             signal: controller.signal,
           })
           if (!effectiveScope) return block
@@ -147,6 +204,7 @@ export default function AiPanel({
         signal: controller.signal,
       })
       setProposal(result.source)
+      setProposalScope(effectiveScope)
       setStatus('ready')
       setRetryNote(
         result.errors.length > 0
@@ -173,6 +231,7 @@ export default function AiPanel({
     setSnapshots(saveSnapshot(snapshotKey, source, 'Before AI edit'))
     onApply(proposal)
     setProposal(null)
+    setProposalScope('')
     setStatus('idle')
     setError(null)
     setAttempt(0)
@@ -181,6 +240,7 @@ export default function AiPanel({
 
   const discard = () => {
     setProposal(null)
+    setProposalScope('')
     setStatus('idle')
     setError(null)
     setAttempt(0)
@@ -191,6 +251,7 @@ export default function AiPanel({
     setSnapshots(saveSnapshot(snapshotKey, source, 'Before restore'))
     onApply(snapshot.source)
     setProposal(null)
+    setProposalScope('')
     setStatus('idle')
     setError(null)
     setAttempt(0)
@@ -217,14 +278,14 @@ export default function AiPanel({
   }
 
   const running = status === 'running'
-  const changed = proposal != null && proposal !== source
+  const changed = scopedProposal != null && scopedProposal !== scopedSource
 
   return (
     <div className="ai">
       <p className="ai-lede">
-        Generate or revise the story with an LLM. The bible and full script are
-        sent to your provider; the proposal is shown as a diff before anything is
-        applied.
+        Generate or revise the story with an LLM. With a knot selected, only that
+        knot is sent; otherwise the bible and full script are sent. The proposal
+        is shown as a diff before anything is applied.
       </p>
 
       <details
@@ -282,18 +343,27 @@ export default function AiPanel({
           {saved && <span className="ai-status">Saved</span>}
         </div>
         <p className="ai-note">
-          The key is stored locally in this browser profile. Use a limited-scope
-          key. Ollama must allow this origin (`OLLAMA_ORIGINS`).
+          In the desktop app the key is stored in the OS keychain; in the web app
+          it stays in this browser profile. Use a limited-scope key. Ollama must
+          allow this origin (`OLLAMA_ORIGINS`).
         </p>
+        {keyWarning && (
+          <p className="ai-warning">
+            The API key could not be stored in the OS keychain; it will only last
+            for this session.
+          </p>
+        )}
       </details>
 
       <label className="ai-field">
         <span>Scope</span>
         <select
           value={scope}
+          disabled={running}
           onChange={(event) => {
             setScope(event.target.value)
             setProposal(null)
+            setProposalScope('')
             setStatus('idle')
             setError(null)
             setAttempt(0)
@@ -358,7 +428,7 @@ export default function AiPanel({
           <div className="ai-proposal-head">
             <strong>Proposed edit</strong>
             <span className="ai-status">
-              {scope ? `knot ${scope}` : 'whole story'} ·{' '}
+              {proposalScope ? `knot ${proposalScope}` : 'whole story'} ·{' '}
               {changed ? 'Review the diff' : 'No changes'}
             </span>
           </div>

@@ -1,7 +1,11 @@
 import { verifyDetached } from './crypto'
+import { MAX_PACK_BYTES } from './pack'
 
 export const CATALOGUE_FORMAT = 'knotebook-catalogue'
 export const CATALOGUE_VERSION = 1
+export const MAX_CATALOGUE_BYTES = 2 * 1024 * 1024
+export const PINNED_STORE_PUBLIC_KEY =
+  'oueMhcTC2rw/7cxgAVsws6msxx7EYGKG0hw0fmhZ4wE='
 
 export interface CatalogueEntry {
   id: string
@@ -55,6 +59,9 @@ export function parseCatalogue(text: string): {
   catalogue: Catalogue | null
   error: string | null
 } {
+  if (text.length > MAX_CATALOGUE_BYTES) {
+    return { catalogue: null, error: 'That catalogue is too large (2 MB limit).' }
+  }
   let value: unknown
   try {
     value = JSON.parse(text)
@@ -86,7 +93,15 @@ export async function fetchPackBytes(
   if (!response.ok) {
     throw new Error(`Pack download failed (${response.status}).`)
   }
-  return response.arrayBuffer()
+  const declared = Number(response.headers.get('content-length') ?? '')
+  if (Number.isFinite(declared) && declared > MAX_PACK_BYTES) {
+    throw new Error('Pack download exceeds the 16 MB limit.')
+  }
+  const bytes = await response.arrayBuffer()
+  if (bytes.byteLength > MAX_PACK_BYTES) {
+    throw new Error('Pack download exceeds the 16 MB limit.')
+  }
+  return bytes
 }
 
 export function verifyPackSignature(

@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { InkLanguageSupport } from '@mavnn/codemirror-lang-ink'
 import { oneDark } from '@codemirror/theme-one-dark'
@@ -13,7 +20,6 @@ import {
   type StoryBible,
 } from './lib/bible'
 import { buildStandaloneHtml } from './lib/exportHtml'
-import inkRuntimeSource from './lib/inkRuntime'
 import { THEMES, getTheme, themePalette } from './lib/themes'
 import {
   backupAndWrite,
@@ -32,7 +38,7 @@ import {
   saveInkFile,
   savePackFile,
 } from './lib/platform'
-import { buildPack } from './lib/pack'
+import { buildPack, MAX_PACK_BYTES } from './lib/pack'
 import { firstImageTag } from './lib/tags'
 import { parseGraph } from './lib/graph'
 import KnotGraph from './components/KnotGraph'
@@ -237,12 +243,9 @@ function App() {
 
   const graph = useMemo(() => {
     if (activeFile && Object.keys(fileContents).length > 0) {
-      return parseGraph(
-        { ...fileContents, [activeFile]: source },
-        activeFile,
-      )
+      return parseGraph({ ...fileContents, [activeFile]: source })
     }
-    return parseGraph({ 'story.ink': source }, 'story.ink')
+    return parseGraph({ 'story.ink': source })
   }, [source, fileContents, activeFile])
 
   const validateSource = (candidate: string): Issue[] => {
@@ -256,12 +259,16 @@ function App() {
     return [...compileInk(candidate, input).issues, ...lintInk(candidate, bible)]
   }
 
+  const currentFile = activeFile ?? 'story.ink'
   const knotOptions = useMemo(
     () =>
       graph.nodes
-        .filter((node) => node.kind === 'knot' && !node.missing)
+        .filter(
+          (node) =>
+            node.kind === 'knot' && !node.missing && node.file === currentFile,
+        )
         .map((node) => node.id),
-    [graph],
+    [graph, currentFile],
   )
   const previewStyle = useMemo(
     () =>
@@ -446,7 +453,7 @@ function App() {
     pendingJump.current = null
     const handle = window.setTimeout(() => handleJump(line), 60)
     return () => window.clearTimeout(handle)
-  }, [editorView])
+  }, [editorView, source])
 
   const handleResetCoverage = () => {
     setVisited(new Set())
@@ -469,7 +476,7 @@ function App() {
     setToast(`Opened ${file.path}`)
   }
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (projectRoot && activeFile && runningInTauri()) {
       try {
         await backupAndWrite(
@@ -490,7 +497,7 @@ function App() {
     if (!target) return
     setPath(target)
     setToast('Saved')
-  }
+  }, [projectRoot, activeFile, source, path])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -501,7 +508,7 @@ function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  })
+  }, [handleSave])
 
   const collectProjectAssets = async () => {
     const assetData: Record<string, string> = {}
@@ -523,6 +530,7 @@ function App() {
   const handleExport = async () => {
     if (!compiledJson) return
     const { assetData, cover } = await collectProjectAssets()
+    const { default: inkRuntimeSource } = await import('./lib/inkRuntime')
     const html = buildStandaloneHtml({
       title,
       json: compiledJson,
@@ -551,7 +559,7 @@ function App() {
       assets: assetData,
     })
     const json = JSON.stringify(pack, null, 2)
-    if (json.length > 16_000_000) {
+    if (json.length > MAX_PACK_BYTES) {
       setToast('Pack is too large (16 MB). Remove some assets.')
       return
     }

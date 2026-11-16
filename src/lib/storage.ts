@@ -1,9 +1,10 @@
 import type { Pack } from './pack'
 
 const DB_NAME = 'knotebook'
-const DB_VERSION = 1
+const DB_VERSION = 2
 const PACK_STORE = 'packs'
 const PROGRESS_STORE = 'progress'
+const LIBRARY_STORE = 'library'
 
 export interface LibraryEntry {
   id: string
@@ -48,6 +49,9 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(PROGRESS_STORE)) {
         db.createObjectStore(PROGRESS_STORE, { keyPath: 'id' })
       }
+      if (!db.objectStoreNames.contains(LIBRARY_STORE)) {
+        db.createObjectStore(LIBRARY_STORE, { keyPath: 'id' })
+      }
     }
     request.onsuccess = () => resolve(request.result)
     request.onerror = () =>
@@ -73,31 +77,7 @@ function transactionDone(tx: IDBTransaction): Promise<void> {
   })
 }
 
-export async function listLibrary(): Promise<LibraryEntry[]> {
-  const db = await openDb()
-  const tx = db.transaction(PACK_STORE, 'readonly')
-  const records = await requestResult(
-    tx.objectStore(PACK_STORE).getAll() as IDBRequest<PackRecord[]>,
-  )
-  return records
-    .sort((a, b) => b.installed.localeCompare(a.installed))
-    .map(({ pack, installed }) => ({
-      id: pack.id,
-      title: pack.title,
-      author: pack.author,
-      theme: pack.theme,
-      release: pack.release ?? '1.0.0',
-      installed,
-      cover: pack.cover,
-    }))
-}
-
-export async function installPack(pack: Pack): Promise<LibraryEntry> {
-  const db = await openDb()
-  const installed = new Date().toISOString()
-  const tx = db.transaction(PACK_STORE, 'readwrite')
-  tx.objectStore(PACK_STORE).put({ id: pack.id, pack, installed })
-  await transactionDone(tx)
+function toLibraryEntry(pack: Pack, installed: string): LibraryEntry {
   return {
     id: pack.id,
     title: pack.title,
@@ -107,6 +87,47 @@ export async function installPack(pack: Pack): Promise<LibraryEntry> {
     installed,
     cover: pack.cover,
   }
+}
+
+export async function listLibrary(): Promise<LibraryEntry[]> {
+  const db = await openDb()
+  const entries = await requestResult(
+    db
+      .transaction(LIBRARY_STORE, 'readonly')
+      .objectStore(LIBRARY_STORE)
+      .getAll() as IDBRequest<LibraryEntry[]>,
+  )
+  if (entries.length > 0) {
+    return entries.sort((a, b) => b.installed.localeCompare(a.installed))
+  }
+
+  const records = await requestResult(
+    db
+      .transaction(PACK_STORE, 'readonly')
+      .objectStore(PACK_STORE)
+      .getAll() as IDBRequest<PackRecord[]>,
+  )
+  if (records.length === 0) return []
+  const migrated = records.map(({ pack, installed }) =>
+    toLibraryEntry(pack, installed),
+  )
+  const tx = db.transaction(LIBRARY_STORE, 'readwrite')
+  for (const entry of migrated) {
+    tx.objectStore(LIBRARY_STORE).put(entry)
+  }
+  await transactionDone(tx)
+  return migrated.sort((a, b) => b.installed.localeCompare(a.installed))
+}
+
+export async function installPack(pack: Pack): Promise<LibraryEntry> {
+  const db = await openDb()
+  const installed = new Date().toISOString()
+  const entry = toLibraryEntry(pack, installed)
+  const tx = db.transaction([PACK_STORE, LIBRARY_STORE], 'readwrite')
+  tx.objectStore(PACK_STORE).put({ id: pack.id, pack, installed })
+  tx.objectStore(LIBRARY_STORE).put(entry)
+  await transactionDone(tx)
+  return entry
 }
 
 export async function loadPack(id: string): Promise<Pack | null> {
@@ -120,9 +141,13 @@ export async function loadPack(id: string): Promise<Pack | null> {
 
 export async function removePack(id: string): Promise<void> {
   const db = await openDb()
-  const tx = db.transaction([PACK_STORE, PROGRESS_STORE], 'readwrite')
+  const tx = db.transaction(
+    [PACK_STORE, PROGRESS_STORE, LIBRARY_STORE],
+    'readwrite',
+  )
   tx.objectStore(PACK_STORE).delete(id)
   tx.objectStore(PROGRESS_STORE).delete(id)
+  tx.objectStore(LIBRARY_STORE).delete(id)
   await transactionDone(tx)
 }
 
