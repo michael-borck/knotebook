@@ -174,6 +174,68 @@ export async function savePackFile(
   return filename
 }
 
+export async function saveTextFile(
+  name: string,
+  text: string,
+  extension: string,
+  mime = 'text/plain',
+): Promise<string | null> {
+  const base =
+    name
+      .replace(/[^\w.-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .toLowerCase() || 'story'
+  const suffix = extension.startsWith('.') ? extension : `.${extension}`
+  const filename = base.endsWith(suffix) ? base : `${base}${suffix}`
+
+  if (isTauri()) {
+    const target = await save({
+      defaultPath: filename,
+      filters: [
+        {
+          name: extension.replace(/^\./, '').toUpperCase(),
+          extensions: [extension.replace(/^\./, '')],
+        },
+      ],
+    })
+    if (!target) return null
+    await writeTextFile(target, text)
+    return target
+  }
+
+  download(filename, new Blob([text], { type: mime }))
+  return filename
+}
+
+export async function saveH5pFile(
+  name: string,
+  bytes: Uint8Array,
+): Promise<string | null> {
+  const base =
+    name
+      .replace(/[^\w.-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .toLowerCase() || 'story'
+  const filename = base.endsWith('.h5p') ? base : `${base}.h5p`
+
+  if (isTauri()) {
+    const target = await save({
+      defaultPath: filename,
+      filters: [{ name: 'H5P', extensions: ['h5p'] }],
+    })
+    if (!target) return null
+    await invoke('write_binary_file', {
+      path: target,
+      contents: Array.from(bytes),
+    })
+    return target
+  }
+
+  const copy = new Uint8Array(bytes)
+  download(filename, new Blob([copy.buffer], { type: 'application/zip' }))
+  return filename
+}
+
 function download(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')

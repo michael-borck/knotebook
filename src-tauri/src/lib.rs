@@ -56,6 +56,11 @@ fn write_text_file(path: String, contents: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn write_binary_file(path: String, contents: Vec<u8>) -> Result<(), String> {
+  fs::write(&path, contents).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn backup_and_write(path: String, contents: String, backup_dir: String) -> Result<(), String> {
   let target = PathBuf::from(&path);
   if target.exists() {
@@ -220,6 +225,7 @@ pub fn run() {
       get_api_key,
       set_api_key,
       write_text_file,
+      write_binary_file,
       backup_and_write,
       list_ink_files,
       list_asset_files,

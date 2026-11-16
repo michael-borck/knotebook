@@ -57,6 +57,23 @@ nothing is applied until you click Apply.
 - **CORS** — Ollama must allow the app origin (`OLLAMA_ORIGINS`); OpenAI's API
   allows browser origins.
 
+## Exports
+
+The Studio toolbar's **Export…** menu writes:
+
+- **HTML** — a self-contained reader with the ink runtime, theme, cover and
+  assets inlined.
+- **H5P** — a `.h5p` package containing a small `H5P.KnotebookStory` library that
+  embeds the HTML reader in a sandboxed iframe.
+- **ChoiceScript** — a `.txt` file for ChoiceScript IF (labels, choices, `*goto`,
+  `*set`).
+- **Twine (Twee)** — a `.twee` file for Twine 2/3 (passages, links, tags).
+- **Pack** — the signed-ready `.knotebook.json` store pack.
+
+The ChoiceScript and Twee exporters cover a constrained subset: knots, stitches,
+text, choices, diverts, tags, `VAR` declarations and simple `~` assignments.
+Unsupported ink constructs are exported as-is for manual cleanup.
+
 ## Stack
 
 Tauri 2 · React 19 · Vite 8 · CodeMirror 6 · inkjs · TweetNaCl.

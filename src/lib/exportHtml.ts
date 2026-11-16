@@ -172,7 +172,9 @@ const READER_JS = `
   }
 
   document.getElementById('restart').addEventListener('click', function () {
-    localStorage.removeItem(SAVE_KEY);
+    try {
+      localStorage.removeItem(SAVE_KEY);
+    } catch (error) {}
     story = new inkjs.Story(JSON.parse(STORY_JSON));
     out.innerHTML = '';
     choicesEl.innerHTML = '';

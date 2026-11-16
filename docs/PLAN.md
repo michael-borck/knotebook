@@ -1,7 +1,7 @@
 # Knotebook — build plan
 
-Status: **Phases 0–4 complete; Phase 5 publish done, exporters remaining.** Last
-updated: 2026-11-16.
+Status: **Phases 0–5 complete; Phase 6 polish remaining.** Last updated:
+2026-11-16.
 
 ## Product
 
@@ -181,6 +181,18 @@ the notarize-check only. This follows the app-hq Tauri API-key pattern.
 `releases/latest/download/latest.json`, downloads signed updater artifacts and
 prompts to install and restart. The per-app updater public key is in
 `tauri.conf.json`.
+
+**Exporters (implemented):**
+- **HTML** — self-contained reader with the ink runtime, theme, cover and assets.
+- **H5P** — `.h5p` package with a custom `H5P.KnotebookStory` library that
+  embeds the HTML reader in a sandboxed iframe.
+- **ChoiceScript** — `.txt` with labels, `*choice`, `*goto`, `*finish`,
+  `*create` and `*set`.
+- **Twine (Twee)** — `.twee` with passages, links, tags and `<<set>>`.
+- The text exporters cover a constrained subset: knots, stitches, text, choices,
+  diverts, tags, `VAR` declarations and simple `~` assignments. Unsupported ink
+  constructs are exported as-is for manual cleanup.
+- Phase 5 is complete.
 
 ### Phase 6 — polish
 Icon, signing/notarization, GitHub Actions release workflow, docs,

@@ -17,6 +17,12 @@ import {
   generateWithRetry,
 } from '../src/lib/ai'
 import { mergeKnotEdits, replaceKnot, sliceKnot } from '../src/lib/inkSource'
+import {
+  buildChoiceScript,
+  buildStoryModel,
+  buildTwee,
+} from '../src/lib/storyModel'
+import { buildH5pPackage } from '../src/lib/h5p'
 import { CATALOGUE_FORMAT, parseCatalogue, sha256Hex, verifyPackSignature } from '../src/lib/catalogue'
 
 const failures: string[] = []
@@ -44,6 +50,42 @@ const issues = lintInk(source, DEFAULT_BIBLE)
 check('no lint errors', issues.every((issue) => issue.severity !== 'error'))
 check('todo detected', issues.some((issue) => issue.message.includes('TODO')))
 check('word count', countWords(source) > 50)
+
+const exportModel = buildStoryModel(source)
+check(
+  'story model finds knots',
+  exportModel.passages.some((passage) => passage.id === 'start'),
+)
+check(
+  'story model captures choices',
+  exportModel.passages[0]?.choices.length === 2,
+)
+const twee = buildTwee(exportModel)
+check(
+  'twee exports passages and links',
+  twee.includes(':: start') &&
+    twee.includes('[[Climb down to the water->climb]]'),
+)
+const choiceScript = buildChoiceScript(exportModel)
+check(
+  'choicescript exports labels and choices',
+  choiceScript.startsWith('*title ') &&
+    choiceScript.includes('*label start') &&
+    choiceScript.includes('*choice'),
+)
+check(
+  'choicescript exports increments',
+  choiceScript.includes('*set courage + 1'),
+)
+const h5p = buildH5pPackage({ title: 'Test', html: '<!doctype html><p>Hi</p>' })
+check('h5p is a zip', h5p[0] === 0x50 && h5p[1] === 0x4b)
+const h5pText = new TextDecoder().decode(h5p)
+check(
+  'h5p has manifest and library',
+  h5pText.includes('h5p.json') &&
+    h5pText.includes('H5P.KnotebookStory') &&
+    h5pText.includes('content/content.json'),
+)
 
 const runtime = readFileSync('node_modules/inkjs/dist/ink.js', 'utf8')
 const html = buildStandaloneHtml({
@@ -355,6 +397,15 @@ const multi = compileInk(multiFiles['main.ink'], {
   rootFile: 'main.ink',
 })
 check('multi-file compiles', multi.ok)
+const multiModel = buildStoryModel(
+  multiFiles['main.ink'],
+  multiFiles,
+  'main.ink',
+)
+check(
+  'story model follows includes',
+  multiModel.passages.some((passage) => passage.id === 'act1'),
+)
 if (multi.ok) {
   const view = readTurn(multi.story)
   check(

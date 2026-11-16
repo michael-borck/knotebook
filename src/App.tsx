@@ -34,11 +34,19 @@ import {
   readOptionalTextFile,
   readTextFile,
   runningInTauri,
+  saveH5pFile,
   saveHtmlFile,
   saveInkFile,
   savePackFile,
+  saveTextFile,
 } from './lib/platform'
 import { buildPack, MAX_PACK_BYTES } from './lib/pack'
+import {
+  buildChoiceScript,
+  buildStoryModel,
+  buildTwee,
+} from './lib/storyModel'
+import { buildH5pPackage } from './lib/h5p'
 import { firstImageTag } from './lib/tags'
 import { parseGraph } from './lib/graph'
 import KnotGraph from './components/KnotGraph'
@@ -229,6 +237,14 @@ function App() {
   const title = useMemo(() => {
     const match = source.match(/^#\s*title:\s*(.+)$/im)
     return match ? match[1].trim() : 'Untitled Story'
+  }, [source])
+  const author = useMemo(() => {
+    const match = source.match(/^#\s*author:\s*(.+)$/im)
+    return match ? match[1].trim() : ''
+  }, [source])
+  const licence = useMemo(() => {
+    const match = source.match(/^#\s*licence:\s*(.+)$/im)
+    return match ? match[1].trim() : 'CC BY 4.0'
   }, [source])
 
   const theme = useMemo(() => getTheme(bible.theme), [bible.theme])
@@ -527,11 +543,11 @@ function App() {
     return { assetData, cover }
   }
 
-  const handleExport = async () => {
-    if (!compiledJson) return
+  const buildExportHtml = async () => {
+    if (!compiledJson) return null
     const { assetData, cover } = await collectProjectAssets()
     const { default: inkRuntimeSource } = await import('./lib/inkRuntime')
-    const html = buildStandaloneHtml({
+    return buildStandaloneHtml({
       title,
       json: compiledJson,
       runtimeSource: inkRuntimeSource,
@@ -539,13 +555,53 @@ function App() {
       cover,
       assets: assetData,
     })
+  }
+
+  const handleExport = async () => {
+    const html = await buildExportHtml()
+    if (!html) return
     const target = await saveHtmlFile(title, html)
+    if (target) setToast(`Exported ${target}`)
+  }
+
+  const handleExportH5p = async () => {
+    const html = await buildExportHtml()
+    if (!html) return
+    const bytes = buildH5pPackage({ title, html, author, license: licence })
+    const target = await saveH5pFile(title, bytes)
+    if (target) setToast(`Exported ${target}`)
+  }
+
+  const storyFiles = () =>
+    activeFile && Object.keys(fileContents).length > 0
+      ? { ...fileContents, [activeFile]: source }
+      : { 'story.ink': source }
+
+  const storyModel = () =>
+    buildStoryModel(source, storyFiles(), activeFile ?? 'story.ink')
+
+  const handleExportChoiceScript = async () => {
+    const model = storyModel()
+    if (model.passages.length === 0) {
+      setToast('Nothing to export')
+      return
+    }
+    const target = await saveTextFile(title, buildChoiceScript(model), 'txt')
+    if (target) setToast(`Exported ${target}`)
+  }
+
+  const handleExportTwee = async () => {
+    const model = storyModel()
+    if (model.passages.length === 0) {
+      setToast('Nothing to export')
+      return
+    }
+    const target = await saveTextFile(title, buildTwee(model), 'twee')
     if (target) setToast(`Exported ${target}`)
   }
 
   const handleBuildPack = async () => {
     if (!compiledJson) return
-    const author = source.match(/^#\s*author:\s*(.+)$/im)?.[1].trim() ?? ''
     const { assetData, cover } = await collectProjectAssets()
     const pack = buildPack({
       title,
@@ -600,20 +656,46 @@ function App() {
           <button type="button" onClick={handleSave}>
             Save
           </button>
-          <button
-            type="button"
-            onClick={handleExport}
-            disabled={!compiledJson}
-          >
-            Export HTML
-          </button>
-          <button
-            type="button"
-            onClick={handleBuildPack}
-            disabled={!compiledJson}
-          >
-            Build pack
-          </button>
+          <details className="export-menu">
+            <summary>Export…</summary>
+            <div className="export-options">
+              <button
+                type="button"
+                onClick={() => void handleExport()}
+                disabled={!compiledJson}
+              >
+                HTML
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleExportH5p()}
+                disabled={!compiledJson}
+              >
+                H5P
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleExportChoiceScript()}
+                disabled={!compiledJson}
+              >
+                ChoiceScript
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleExportTwee()}
+                disabled={!compiledJson}
+              >
+                Twine (Twee)
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleBuildPack()}
+                disabled={!compiledJson}
+              >
+                Pack
+              </button>
+            </div>
+          </details>
           <button
             type="button"
             onClick={() => {
