@@ -80,3 +80,28 @@ export function replaceKnot(
     ? `${joined}\n`
     : joined
 }
+
+export function mergeKnotEdits(
+  source: string,
+  edits: Record<string, string>,
+  allowed: string[],
+): { source: string; error: string | null } {
+  let merged = source
+  for (const [knot, block] of Object.entries(edits)) {
+    if (!allowed.includes(knot)) {
+      return {
+        source: merged,
+        error: `The model returned an unknown knot "${knot}".`,
+      }
+    }
+    const next = replaceKnot(merged, knot, block)
+    if (!next) {
+      return {
+        source: merged,
+        error: `The model's revision did not include the knot "${knot}".`,
+      }
+    }
+    merged = next
+  }
+  return { source: merged, error: null }
+}

@@ -1,7 +1,7 @@
 # Knotebook — build plan
 
-Status: **Phases 0–5 first cuts complete; Phase 3 complete; Phase 4 hardening in
-progress.** Last updated: 2026-11-16.
+Status: **Phases 0–4 complete; Phase 5 publish done, exporters remaining.** Last
+updated: 2026-11-16.
 
 ## Product
 
@@ -151,13 +151,17 @@ local Ollama.
 - **Per-knot structured edits**: selecting a knot sends only that knot (plus
   other knot names as context), merges the revision back into the script, and
   shows a knot-scoped diff.
+- **Multi-knot structured edits**: the "Multiple knots" scope sends a JSON
+  request, parses a `{ knot: source }` map, validates every key, and merges the
+  selected knots with one scoped diff.
+- **Token streaming**: OpenAI-compatible SSE is parsed incrementally and the live
+  diff updates while the model writes.
 - **Automatic retry loop**: failed revisions go back to the model with the
   compile/lint errors (up to 3 attempts); scoped retries ask for only the knot.
 - **OS keychain**: the API key is stored with the Rust `keyring` crate (macOS
   Keychain, Windows Credential Manager, Linux Secret Service); the web app
   falls back to browser storage and legacy keys are migrated automatically.
-- Still to do: stream tokens into the diff and add per-knot structured JSON
-  edits for multi-knot tasks.
+- Phase 4 is complete.
 
 ### Phase 5 — publish + export
 PWA build, Tauri release matrix, auto-update. Then H5P / ChoiceScript / Twine

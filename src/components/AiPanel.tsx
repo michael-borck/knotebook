@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { diffLines } from 'diff'
+import { diffLines, type Change } from 'diff'
 import type { StoryBible } from '../lib/bible'
 import type { Issue } from '../lib/types'
 import {
   PROVIDER_DEFAULTS,
+  extractJsonEdits,
+  extractPartialInk,
   generateInk,
   generateWithRetry,
   clearLegacyApiKey,
@@ -20,7 +22,7 @@ import {
   saveSnapshot,
   type Snapshot,
 } from '../lib/snapshots'
-import { replaceKnot, sliceKnot } from '../lib/inkSource'
+import { mergeKnotEdits, replaceKnot, sliceKnot } from '../lib/inkSource'
 
 interface AiPanelProps {
   source: string
@@ -33,6 +35,13 @@ interface AiPanelProps {
 }
 
 type Status = 'idle' | 'running' | 'ready' | 'error'
+
+function joinKnots(value: string, names: string[]): string {
+  return names
+    .map((knot) => sliceKnot(value, knot) ?? '')
+    .filter(Boolean)
+    .join('\n\n')
+}
 
 export default function AiPanel({
   source,
@@ -51,6 +60,11 @@ export default function AiPanel({
   const [error, setError] = useState<string | null>(null)
   const [proposal, setProposal] = useState<string | null>(null)
   const [proposalScope, setProposalScope] = useState('')
+  const [proposalKnots, setProposalKnots] = useState<string[]>([])
+  const [selectedKnots, setSelectedKnots] = useState<string[]>([])
+  const [streamText, setStreamText] = useState('')
+  const [streamScope, setStreamScope] = useState('')
+  const [streamKnots, setStreamKnots] = useState<string[]>([])
   const [attempt, setAttempt] = useState(0)
   const [retryNote, setRetryNote] = useState<string | null>(null)
   const [snapshots, setSnapshots] = useState<Snapshot[]>(() =>
@@ -59,11 +73,16 @@ export default function AiPanel({
   const [saved, setSaved] = useState(false)
   const [keyWarning, setKeyWarning] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+  const running = status === 'running'
 
   useEffect(() => {
     setSnapshots(loadSnapshots(snapshotKey))
     setProposal(null)
     setProposalScope('')
+    setProposalKnots([])
+    setStreamText('')
+    setStreamScope('')
+    setStreamKnots([])
     setStatus('idle')
     setError(null)
     setAttempt(0)
@@ -96,22 +115,38 @@ export default function AiPanel({
     }
   }, [])
 
-  const scopedSource = useMemo(
-    () => (proposalScope ? (sliceKnot(source, proposalScope) ?? source) : source),
-    [source, proposalScope],
+  const activeKnots = useMemo(
+    () => selectedKnots.filter((knot) => knots.includes(knot)),
+    [selectedKnots, knots],
   )
-  const scopedProposal = useMemo(
-    () =>
-      proposal == null
-        ? null
-        : proposalScope
-          ? (sliceKnot(proposal, proposalScope) ?? proposal)
-          : proposal,
-    [proposal, proposalScope],
-  )
+
+  const scopedSource = useMemo(() => {
+    if (proposalKnots.length > 0) return joinKnots(source, proposalKnots)
+    return proposalScope ? (sliceKnot(source, proposalScope) ?? source) : source
+  }, [source, proposalScope, proposalKnots])
+  const scopedProposal = useMemo(() => {
+    if (proposal == null) return null
+    if (proposalKnots.length > 0) return joinKnots(proposal, proposalKnots)
+    return proposalScope
+      ? (sliceKnot(proposal, proposalScope) ?? proposal)
+      : proposal
+  }, [proposal, proposalScope, proposalKnots])
   const diff = useMemo(
     () => (scopedProposal == null ? [] : diffLines(scopedSource, scopedProposal)),
     [scopedSource, scopedProposal],
+  )
+  const liveSource = useMemo(() => {
+    if (streamKnots.length > 0) return joinKnots(source, streamKnots)
+    return streamScope ? (sliceKnot(source, streamScope) ?? source) : source
+  }, [source, streamScope, streamKnots])
+  const liveInk = useMemo(
+    () =>
+      streamKnots.length === 0 ? extractPartialInk(streamText) : null,
+    [streamText, streamKnots],
+  )
+  const liveDiff = useMemo(
+    () => (running && liveInk ? diffLines(liveSource, liveInk) : []),
+    [running, liveSource, liveInk],
   )
   const errors = issues.filter((issue) => issue.severity === 'error')
 
@@ -142,13 +177,19 @@ export default function AiPanel({
     void persistSettings()
   }
 
-  const runWith = async (task: string, effectiveScope: string) => {
+  const runWith = async (
+    task: string,
+    effectiveScope: string,
+    effectiveKnots: string[] = [],
+  ) => {
     if (status === 'running') return
     if (!settings.baseUrl.trim() || !settings.model.trim()) {
       setError('Set a base URL and model in the provider settings.')
       setStatus('error')
       return
     }
+    const multi = effectiveScope === '' && effectiveKnots.length > 0
+    const single = effectiveScope !== ''
     const storedKey = await saveApiKey(settings.apiKey)
     setKeyWarning(!storedKey && settings.apiKey.trim().length > 0)
     saveAiSettings(settings)
@@ -156,55 +197,91 @@ export default function AiPanel({
     setStatus('running')
     setError(null)
     setProposal(null)
-    setProposalScope(effectiveScope)
+    setProposalScope('')
+    setProposalKnots([])
+    setStreamText('')
+    setStreamScope(effectiveScope)
+    setStreamKnots(multi ? effectiveKnots : [])
     setAttempt(0)
     setRetryNote(null)
-    const scopedTask = effectiveScope
+    const scopedTask = multi
       ? [
-          `Revise ONLY the knot "${effectiveScope}". Return only that knot, including the === ${effectiveScope} === header, in a single ink code block. Do not change other knots.`,
+          `Revise ONLY these knots: ${effectiveKnots.join(', ')}. Return a JSON object mapping each knot name to its full revised ink source, including the === knot === header. Do not change other knots.`,
           '',
-          task || 'Improve this knot while preserving the story.',
+          task || 'Improve these knots while preserving the story.',
         ].join('\n')
-      : task
+      : single
+        ? [
+            `Revise ONLY the knot "${effectiveScope}". Return only that knot, including the === ${effectiveScope} === header, in a single ink code block. Do not change other knots.`,
+            '',
+            task || 'Improve this knot while preserving the story.',
+          ].join('\n')
+        : task
     const controller = new AbortController()
     abortRef.current = controller
     try {
       const result = await generateWithRetry(source, scopedTask, {
         maxAttempts: 3,
-        scopedKnot: effectiveScope || undefined,
+        scopedKnot: single ? effectiveScope : undefined,
+        scopedKnots: multi ? effectiveKnots : undefined,
         generate: async (candidate, feedback) => {
-          const candidateSource = effectiveScope
+          const candidateSource = single
             ? (sliceKnot(candidate, effectiveScope) ?? candidate)
             : candidate
-          const block = await generateInk({
+          const raw = await generateInk({
             settings,
             bible,
             source: candidateSource,
             instruction: feedback,
-            context: effectiveScope
-              ? `The story also contains these knots: ${knots.join(', ')}. Only the selected knot is shown below; do not return the others.`
-              : undefined,
+            context:
+              single || multi
+                ? `The story also contains these knots: ${knots.join(', ')}. ${
+                    single
+                      ? 'Only the selected knot is shown below; do not return the others.'
+                      : 'Only the selected knots are shown below; return only those knots.'
+                  }`
+                : undefined,
+            mode: multi ? 'json' : 'ink',
+            onDelta: (text) => {
+              if (!controller.signal.aborted) setStreamText(text)
+            },
             signal: controller.signal,
           })
-          if (!effectiveScope) return block
-          const merged = replaceKnot(candidate, effectiveScope, block)
-          if (!merged) {
-            throw new Error(
-              `The model's revision did not include the knot "${effectiveScope}".`,
-            )
+          if (!single && !multi) return raw
+          if (single) {
+            const merged = replaceKnot(candidate, effectiveScope, raw)
+            if (!merged) {
+              throw new Error(
+                `The model's revision did not include the knot "${effectiveScope}".`,
+              )
+            }
+            return merged
           }
-          return merged
+          const edits = extractJsonEdits(raw)
+          if (!edits) {
+            throw new Error('The model did not return a JSON object.')
+          }
+          const mergedEdits = mergeKnotEdits(candidate, edits, effectiveKnots)
+          if (mergedEdits.error) {
+            throw new Error(mergedEdits.error)
+          }
+          return mergedEdits.source
         },
         validate,
         onAttempt: (nextAttempt) => {
           setAttempt(nextAttempt)
           setStatus('running')
+          setStreamText('')
           setRetryNote(nextAttempt > 1 ? `Attempt ${nextAttempt} of 3` : null)
         },
         signal: controller.signal,
       })
       setProposal(result.source)
-      setProposalScope(effectiveScope)
+      setProposalScope(single ? effectiveScope : '')
+      setProposalKnots(multi ? effectiveKnots : [])
+      setStreamText('')
+      setStreamScope('')
+      setStreamKnots([])
       setStatus('ready')
       setRetryNote(
         result.errors.length > 0
@@ -212,6 +289,9 @@ export default function AiPanel({
           : null,
       )
     } catch (err) {
+      setStreamText('')
+      setStreamScope('')
+      setStreamKnots([])
       if (controller.signal.aborted) {
         setStatus('idle')
         setRetryNote(null)
@@ -224,7 +304,12 @@ export default function AiPanel({
     }
   }
 
-  const run = (task: string) => runWith(task, scope)
+  const run = (task: string) =>
+    runWith(
+      task,
+      scope === '*' ? '' : scope,
+      scope === '*' ? activeKnots : [],
+    )
 
   const apply = () => {
     if (!proposal) return
@@ -232,6 +317,10 @@ export default function AiPanel({
     onApply(proposal)
     setProposal(null)
     setProposalScope('')
+    setProposalKnots([])
+    setStreamText('')
+    setStreamScope('')
+    setStreamKnots([])
     setStatus('idle')
     setError(null)
     setAttempt(0)
@@ -241,6 +330,10 @@ export default function AiPanel({
   const discard = () => {
     setProposal(null)
     setProposalScope('')
+    setProposalKnots([])
+    setStreamText('')
+    setStreamScope('')
+    setStreamKnots([])
     setStatus('idle')
     setError(null)
     setAttempt(0)
@@ -252,6 +345,10 @@ export default function AiPanel({
     onApply(snapshot.source)
     setProposal(null)
     setProposalScope('')
+    setProposalKnots([])
+    setStreamText('')
+    setStreamScope('')
+    setStreamKnots([])
     setStatus('idle')
     setError(null)
     setAttempt(0)
@@ -274,10 +371,12 @@ export default function AiPanel({
 
   const cancel = () => {
     abortRef.current?.abort()
+    setStreamText('')
+    setStreamScope('')
+    setStreamKnots([])
     setStatus('idle')
   }
 
-  const running = status === 'running'
   const changed = scopedProposal != null && scopedProposal !== scopedSource
 
   return (
@@ -364,6 +463,10 @@ export default function AiPanel({
             setScope(event.target.value)
             setProposal(null)
             setProposalScope('')
+            setProposalKnots([])
+            setStreamText('')
+            setStreamScope('')
+            setStreamKnots([])
             setStatus('idle')
             setError(null)
             setAttempt(0)
@@ -371,6 +474,7 @@ export default function AiPanel({
           }}
         >
           <option value="">Whole story</option>
+          <option value="*">Multiple knots…</option>
           {knots.map((knot) => (
             <option key={knot} value={knot}>
               {knot}
@@ -379,6 +483,32 @@ export default function AiPanel({
         </select>
       </label>
 
+      {scope === '*' && (
+        <div className="ai-knot-picker">
+          {knots.map((knot) => (
+            <label key={knot} className="ai-knot-option">
+              <input
+                type="checkbox"
+                checked={selectedKnots.includes(knot)}
+                disabled={running}
+                onChange={(event) =>
+                  setSelectedKnots((previous) =>
+                    event.target.checked
+                      ? [...previous, knot]
+                      : previous.filter((item) => item !== knot),
+                  )
+                }
+              />
+              <span>{knot}</span>
+            </label>
+          ))}
+          {knots.length === 0 && (
+            <span className="ai-status">No knots in this file.</span>
+          )}
+          <span className="ai-status">{activeKnots.length} selected</span>
+        </div>
+      )}
+
       <label className="ai-field">
         <span>Instruction</span>
         <textarea
@@ -386,9 +516,11 @@ export default function AiPanel({
           onChange={(event) => setInstruction(event.target.value)}
           rows={4}
           placeholder={
-            scope
-              ? `e.g. Tighten the dialogue in ${scope}.`
-              : 'e.g. Add a new knot called epilogue and connect the ending to it. Keep the noir tone.'
+            scope === '*'
+              ? 'e.g. Tighten the opening and the ending. Keep the middle stable.'
+              : scope
+                ? `e.g. Tighten the dialogue in ${scope}.`
+                : 'e.g. Add a new knot called epilogue and connect the ending to it. Keep the noir tone.'
           }
         />
       </label>
@@ -398,7 +530,7 @@ export default function AiPanel({
           type="button"
           className="ai-primary"
           onClick={() => void run(instruction)}
-          disabled={running}
+          disabled={running || (scope === '*' && activeKnots.length === 0)}
         >
           {running ? 'Thinking…' : 'Generate / edit'}
         </button>
@@ -418,48 +550,44 @@ export default function AiPanel({
       {error && <p className="ai-error">{error}</p>}
       {running && (
         <p className="ai-status">
-          Attempt {Math.max(1, attempt)} of 3 — waiting for the model…
+          {streamKnots.length > 0
+            ? `Streaming JSON for ${streamKnots.length} knot${streamKnots.length === 1 ? '' : 's'}…`
+            : streamText
+              ? 'Streaming…'
+              : `Attempt ${Math.max(1, attempt)} of 3 — waiting for the model…`}
         </p>
       )}
       {retryNote && !running && <p className="ai-warning">{retryNote}</p>}
+
+      {running && liveInk && (
+        <section className="ai-proposal ai-streaming">
+          <div className="ai-proposal-head">
+            <strong>Streaming preview</strong>
+            <span className="ai-status">
+              {streamScope ? `knot ${streamScope}` : 'whole story'}
+            </span>
+          </div>
+          <DiffView parts={liveDiff} />
+        </section>
+      )}
+      {running && streamKnots.length > 0 && streamText && (
+        <pre className="ai-stream-json">{streamText.slice(-4000)}</pre>
+      )}
 
       {proposal && (
         <section className="ai-proposal">
           <div className="ai-proposal-head">
             <strong>Proposed edit</strong>
             <span className="ai-status">
-              {proposalScope ? `knot ${proposalScope}` : 'whole story'} ·{' '}
-              {changed ? 'Review the diff' : 'No changes'}
+              {proposalKnots.length > 0
+                ? `${proposalKnots.length} knot${proposalKnots.length === 1 ? '' : 's'}`
+                : proposalScope
+                  ? `knot ${proposalScope}`
+                  : 'whole story'}{' '}
+              · {changed ? 'Review the diff' : 'No changes'}
             </span>
           </div>
-          <div className="ai-diff">
-            {diff.map((part, partIndex) =>
-              part.value
-                .split('\n')
-                .filter(
-                  (line, index, lines) =>
-                    !(index === lines.length - 1 && line === ''),
-                )
-                .map((line, lineIndex) => (
-                  <div
-                    key={`${partIndex}-${lineIndex}`}
-                    className={
-                      part.added
-                        ? 'diff-add'
-                        : part.removed
-                          ? 'diff-del'
-                          : 'diff-same'
-                    }
-                  >
-                    <span className="diff-sign">
-                      {part.added ? '+' : part.removed ? '-' : ' '}
-                    </span>
-                    {line || ' '}
-                  </div>
-                )),
-            )}
-            {diff.length === 0 && <div className="diff-same">No changes.</div>}
-          </div>
+          <DiffView parts={diff} />
           <div className="ai-actions">
             <button
               type="button"
@@ -510,6 +638,39 @@ export default function AiPanel({
           </div>
         </details>
       )}
+    </div>
+  )
+}
+
+function DiffView({ parts }: { parts: Change[] }) {
+  return (
+    <div className="ai-diff">
+      {parts.map((part, partIndex) =>
+        part.value
+          .split('\n')
+          .filter(
+            (line, index, lines) =>
+              !(index === lines.length - 1 && line === ''),
+          )
+          .map((line, lineIndex) => (
+            <div
+              key={`${partIndex}-${lineIndex}`}
+              className={
+                part.added
+                  ? 'diff-add'
+                  : part.removed
+                    ? 'diff-del'
+                    : 'diff-same'
+              }
+            >
+              <span className="diff-sign">
+                {part.added ? '+' : part.removed ? '-' : ' '}
+              </span>
+              {line || ' '}
+            </div>
+          )),
+      )}
+      {parts.length === 0 && <div className="diff-same">No changes.</div>}
     </div>
   )
 }

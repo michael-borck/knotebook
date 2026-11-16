@@ -11,10 +11,12 @@ import { compareVersions } from '../src/lib/version'
 import {
   DEFAULT_AI_SETTINGS,
   extractInk,
+  extractJsonEdits,
+  extractPartialInk,
   generateInk,
   generateWithRetry,
 } from '../src/lib/ai'
-import { replaceKnot, sliceKnot } from '../src/lib/inkSource'
+import { mergeKnotEdits, replaceKnot, sliceKnot } from '../src/lib/inkSource'
 import { CATALOGUE_FORMAT, parseCatalogue, sha256Hex, verifyPackSignature } from '../src/lib/catalogue'
 
 const failures: string[] = []
@@ -107,6 +109,72 @@ check(
   extractInk('=== start ===\nHi\n-> END')?.includes('=== start ===') === true,
 )
 check('extractInk rejects prose', extractInk('Sure, here is a story.') === null)
+check(
+  'extract partial ink',
+  extractPartialInk('```ink\n=== a ===\nA') === '=== a ===\nA',
+)
+
+const jsonEdits = extractJsonEdits('```json\n{"a":"=== a ===\\nA"}\n```')
+check('json edits parse', jsonEdits?.a === '=== a ===\nA')
+check('json edits reject array', extractJsonEdits('[1]') === null)
+check('json edits reject non-string', extractJsonEdits('{"a":1}') === null)
+
+const sse = [
+  'data: {"choices":[{"delta":{"content":"```ink\\n"}}]}',
+  '',
+  'data: {"choices":[{"delta":{"content":"=== start ===\\nHi\\n-> END\\n"}}]}',
+  '',
+  'data: {"choices":[{"delta":{"content":"```"}}]}',
+  '',
+  'data: [DONE]',
+  '',
+].join('\n')
+const originalFetch = globalThis.fetch
+const deltas: string[] = []
+globalThis.fetch = (async () =>
+  new Response(sse, {
+    headers: { 'content-type': 'text/event-stream' },
+  })) as typeof fetch
+try {
+  const streamed = await generateInk({
+    settings: {
+      ...DEFAULT_AI_SETTINGS,
+      provider: 'openai',
+      baseUrl: 'https://example.com/v1',
+      apiKey: '',
+    },
+    bible: DEFAULT_BIBLE,
+    source: '=== start ===\nHi\n-> END\n',
+    instruction: 'x',
+    onDelta: (text) => deltas.push(text),
+  })
+  check('ai streams ink', streamed === '=== start ===\nHi\n-> END')
+  check(
+    'ai emits deltas',
+    deltas.length > 0 && deltas[deltas.length - 1].includes('=== start ==='),
+  )
+} finally {
+  globalThis.fetch = originalFetch
+}
+
+const multiFeedback: string[] = []
+await generateWithRetry('source', 'edit', {
+  maxAttempts: 2,
+  scopedKnots: ['a', 'b'],
+  generate: async (_candidate, feedback) => {
+    multiFeedback.push(feedback)
+    return multiFeedback.length === 1 ? 'bad' : 'ok'
+  },
+  validate: (candidate) =>
+    candidate === 'bad'
+      ? [{ severity: 'error' as const, message: 'bad', source: 'ink' as const }]
+      : [],
+})
+check(
+  'ai multi retry names knots',
+  multiFeedback[1]?.includes('these knots') === true &&
+    multiFeedback[1]?.includes('a, b') === true,
+)
 
 let httpKeyError = ''
 try {
@@ -199,6 +267,23 @@ check(
 check(
   'replaceKnot missing knot',
   replaceKnot(knotSource, 'nope', 'x') === null,
+)
+const mergeSource = '=== a ===\nA\n\n=== b ===\nB\n-> END\n'
+const mergedEdits = mergeKnotEdits(
+  mergeSource,
+  { a: '=== a ===\nA revised' },
+  ['a', 'b'],
+)
+check(
+  'merge knot edits',
+  mergedEdits.error === null &&
+    mergedEdits.source.includes('A revised') &&
+    mergedEdits.source.includes('=== b ==='),
+)
+check(
+  'merge rejects unknown knot',
+  mergeKnotEdits(mergeSource, { c: '=== c ===\nC' }, ['a', 'b']).error !==
+    null,
 )
 const parsedPack = parsePack(JSON.stringify(pack))
 check('pack round-trips', parsedPack.pack?.title === 'Smoke Pack')

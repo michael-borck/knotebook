@@ -93,6 +93,43 @@ export function extractInk(text: string): string | null {
   return null
 }
 
+export function extractPartialInk(text: string): string | null {
+  const fenced = /```(?:ink)?\s*\n([\s\S]*?)(?:```|$)/i.exec(text)
+  if (fenced) {
+    const body = fenced[1]
+    return body.trim().length > 0 ? body.trimEnd() : null
+  }
+
+  const trimmed = text.trim()
+  if (/(^|\n)\s*(===|->)/.test(trimmed)) return trimmed
+  return null
+}
+
+export function extractJsonEdits(text: string): Record<string, string> | null {
+  const fenced = /```(?:json)?\s*\n([\s\S]*?)```/i.exec(text)
+  const candidate = (fenced ? fenced[1] : text).trim()
+  const start = candidate.indexOf('{')
+  const end = candidate.lastIndexOf('}')
+  if (start === -1 || end <= start) return null
+
+  let value: unknown
+  try {
+    value = JSON.parse(candidate.slice(start, end + 1))
+  } catch {
+    return null
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return null
+  }
+
+  const edits: Record<string, string> = {}
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry !== 'string' || entry.trim().length === 0) return null
+    edits[key] = entry
+  }
+  return edits
+}
+
 const SYSTEM_PROMPT = `You are an expert interactive fiction writer and an expert in ink, inkle's narrative scripting language.
 
 You will receive a story bible and the current ink source. Return ONLY the complete revised ink source in a single fenced code block tagged ink.
@@ -105,6 +142,8 @@ export interface GenerateOptions {
   source: string
   instruction: string
   context?: string
+  mode?: 'ink' | 'json'
+  onDelta?: (text: string) => void
   signal?: AbortSignal
 }
 
@@ -114,13 +153,113 @@ function isLocalBaseUrl(baseUrl: string): boolean {
   return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(baseUrl)
 }
 
+interface ChatCompletion {
+  choices?: Array<{
+    message?: { content?: unknown }
+    delta?: { content?: unknown }
+  }>
+}
+
+function contentFromMessage(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((part) =>
+      part && typeof part === 'object' && 'text' in part
+        ? String((part as { text: unknown }).text)
+        : '',
+    )
+    .join('')
+}
+
+async function readCompletion(
+  response: Response,
+  onDelta?: (text: string) => void,
+): Promise<string> {
+  const contentType = response.headers.get('content-type') ?? ''
+  if (!response.body || !contentType.includes('text/event-stream')) {
+    const text = await response.text()
+    let data: ChatCompletion | null = null
+    try {
+      data = JSON.parse(text) as ChatCompletion
+    } catch {
+      data = null
+    }
+    const content = data?.choices?.[0]?.message?.content
+    const value = contentFromMessage(content)
+    if (value) onDelta?.(value)
+    return value || text
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let full = ''
+
+  const handle = (line: string) => {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('data:')) return
+    const payload = trimmed.slice(5).trim()
+    if (!payload || payload === '[DONE]') return
+    let json: ChatCompletion
+    try {
+      json = JSON.parse(payload) as ChatCompletion
+    } catch {
+      return
+    }
+    const choice = json.choices?.[0]
+    const delta = choice?.delta?.content
+    const message = choice?.message?.content
+    const chunk =
+      typeof delta === 'string'
+        ? delta
+        : typeof message === 'string'
+          ? message
+          : ''
+    if (chunk) {
+      full += chunk
+      onDelta?.(full)
+    }
+  }
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+      for (const line of lines) handle(line)
+    }
+    buffer += decoder.decode()
+    if (buffer.trim()) handle(buffer)
+  } finally {
+    reader.releaseLock()
+  }
+
+  return full
+}
+
 export async function generateInk(options: GenerateOptions): Promise<string> {
-  const { settings, bible, source, instruction, context, signal } = options
+  const {
+    settings,
+    bible,
+    source,
+    instruction,
+    context,
+    mode = 'ink',
+    onDelta,
+    signal,
+  } = options
   const baseUrl = settings.baseUrl.replace(/\/+$/, '')
   const task =
     instruction.trim() ||
     'Continue and improve the story while preserving the conventions.'
-  if (settings.apiKey.trim() && !baseUrl.startsWith('https://') && !isLocalBaseUrl(baseUrl)) {
+  if (
+    settings.apiKey.trim() &&
+    !baseUrl.startsWith('https://') &&
+    !isLocalBaseUrl(baseUrl)
+  ) {
     throw new Error(
       'Refusing to send an API key over plain HTTP. Use HTTPS or a local endpoint.',
     )
@@ -135,9 +274,8 @@ export async function generateInk(options: GenerateOptions): Promise<string> {
   }
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
-  let response: Response
   try {
-    response = await fetch(`${baseUrl}/chat/completions`, {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       signal: controller.signal,
       headers: {
@@ -148,7 +286,7 @@ export async function generateInk(options: GenerateOptions): Promise<string> {
       },
       body: JSON.stringify({
         model: settings.model,
-        stream: false,
+        stream: true,
         temperature: 0.7,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
@@ -171,6 +309,23 @@ export async function generateInk(options: GenerateOptions): Promise<string> {
         ],
       }),
     })
+
+    if (!response.ok) {
+      const detail = (await response.text()).slice(0, 400)
+      throw new Error(`AI request failed (${response.status}). ${detail}`)
+    }
+
+    const text = await readCompletion(response, onDelta)
+    if (mode === 'json') {
+      if (!extractJsonEdits(text)) {
+        throw new Error('The model did not return a JSON object.')
+      }
+      return text
+    }
+
+    const ink = extractInk(text)
+    if (!ink) throw new Error('The model did not return an ink code block.')
+    return ink
   } catch (error) {
     if (!signal?.aborted && controller.signal.aborted) {
       throw new Error('AI request timed out.')
@@ -180,37 +335,12 @@ export async function generateInk(options: GenerateOptions): Promise<string> {
     clearTimeout(timer)
     signal?.removeEventListener('abort', abort)
   }
-
-  if (!response.ok) {
-    const detail = (await response.text()).slice(0, 400)
-    throw new Error(`AI request failed (${response.status}). ${detail}`)
-  }
-
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: unknown } }>
-  }
-  const content = data.choices?.[0]?.message?.content
-  const text =
-    typeof content === 'string'
-      ? content
-      : Array.isArray(content)
-        ? content
-            .map((part) =>
-              part && typeof part === 'object' && 'text' in part
-                ? String((part as { text: unknown }).text)
-                : '',
-            )
-            .join('')
-        : ''
-
-  const ink = extractInk(text)
-  if (!ink) throw new Error('The model did not return an ink code block.')
-  return ink
 }
 
 export interface GenerateWithRetryOptions {
   maxAttempts?: number
   scopedKnot?: string
+  scopedKnots?: string[]
   generate: (source: string, instruction: string) => Promise<string>
   validate: (source: string) => Issue[]
   onAttempt?: (attempt: number) => void
@@ -250,9 +380,11 @@ export async function generateWithRetry(
     feedback = [
       instruction,
       '',
-      options.scopedKnot
-        ? `The previous revision of the knot "${options.scopedKnot}" had errors. Fix them and return only that knot, including its === ${options.scopedKnot} === header.`
-        : 'The previous revision had errors. Fix them and return the complete corrected script.',
+      options.scopedKnots?.length
+        ? `The previous revision of these knots had errors: ${options.scopedKnots.join(', ')}. Fix them and return only a JSON object for these knots.`
+        : options.scopedKnot
+          ? `The previous revision of the knot "${options.scopedKnot}" had errors. Fix them and return only that knot, including its === ${options.scopedKnot} === header.`
+          : 'The previous revision had errors. Fix them and return the complete corrected script.',
       ...errors.map(
         (issue) =>
           `${issue.line != null ? `line ${issue.line}: ` : ''}${issue.message}`,
