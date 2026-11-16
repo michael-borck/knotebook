@@ -91,6 +91,7 @@ key and the signature.
 
 - Open **Store** in the player.
 - URL resolution order: `?store=<url>` → `VITE_CATALOGUE_URL` → `./catalogue.json`.
+- Filter packs by theme with the chips above the grid.
 - Install: download → **SHA-256 check** → **Ed25519 signature** → schema and
   story validation → IndexedDB.
 - Packs are capped at 16 MB; catalogues at 2 MB.
@@ -146,8 +147,18 @@ pack version.
 | Store operator | high | keys, CI, catalogue, deploy, review |
 | Self-hoster | medium | host catalogue + packs, point the app at it |
 
+## Submission validation
+
+`knotebook-packs` runs `scripts/validate-submission.mjs` on every push and PR. It
+checks the submission metadata, pack version and slug, story JSON, data-URL
+assets, and the 16 MB limit.
+
+`knotebook-store` runs `scripts/verify-store.mjs` before deploy. It checks the
+catalogue version, every pack's SHA-256 and signature, pack metadata, data-URL
+assets, and size limits.
+
 ## Next
 
-1. Scaffold `knotebook-packs` and `knotebook-store`.
-2. Catalogue theme filters.
-3. Pack version negotiation for future pack formats.
+1. Per-pack preview art in the storefront.
+2. Pack compatibility metadata for future formats.
+3. Pack version negotiation beyond the current `version: 1` rejection.

@@ -47,7 +47,7 @@ export function isCatalogue(value: unknown): value is Catalogue {
   const catalogue = value as Partial<Catalogue>
   return (
     catalogue.format === CATALOGUE_FORMAT &&
-    typeof catalogue.version === 'number' &&
+    catalogue.version === CATALOGUE_VERSION &&
     (catalogue.publicKey === undefined ||
       typeof catalogue.publicKey === 'string') &&
     Array.isArray(catalogue.packs) &&

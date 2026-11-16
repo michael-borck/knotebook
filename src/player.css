@@ -135,6 +135,35 @@
   font-weight: 600;
 }
 
+.store-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 16px;
+}
+
+.store-filters button {
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.store-filters button:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.store-filters button.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #101117;
+}
+
 .import-button {
   padding: 7px 12px;
   border-radius: 8px;

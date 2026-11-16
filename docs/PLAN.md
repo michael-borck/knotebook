@@ -1,7 +1,7 @@
 # Knotebook — build plan
 
-Status: **Phases 0–5 first cuts complete; Phase 4 hardening in progress.** Last
-updated: 2026-11-16.
+Status: **Phases 0–5 first cuts complete; Phase 3 complete; Phase 4 hardening in
+progress.** Last updated: 2026-11-16.
 
 ## Product
 
@@ -131,9 +131,12 @@ Exit: third-party PR → reviewed → signed → installable.
 - `scripts/make-sample-pack.ts` — bundled signed demo store in `public/`.
 - Player **Store** tab: catalogue URL via `?store=` / `VITE_CATALOGUE_URL` /
   `./catalogue.json`; install verifies **SHA-256** and **signature** before
-  IndexedDB. Packs and catalogues have size caps.
+  IndexedDB. Packs and catalogues have size caps, and the store filters packs by
+  theme.
 - `docs/STORE.md`, `templates/submission.json`.
-- Repo scaffolds (`knotebook-packs`, `knotebook-store`) remain to do.
+- `knotebook-packs`: submission queue with schema validation and CI.
+- `knotebook-store`: static storefront, signed catalogue, verifier, theme filters,
+  strict CSP, and Pages deploy.
 
 ### Phase 4 — LLM loop (differentiator)
 Bible + conventions as the generation contract; per-knot structured edits with

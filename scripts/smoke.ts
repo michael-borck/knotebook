@@ -398,6 +398,12 @@ check(
   parseCatalogue(catalogueText).catalogue?.packs.length === 1,
 )
 check('catalogue rejects junk', parseCatalogue('{"nope":true}').catalogue === null)
+check(
+  'catalogue rejects future versions',
+  parseCatalogue(
+    JSON.stringify({ ...JSON.parse(catalogueText), version: 2 }),
+  ).catalogue === null,
+)
 
 const digestBytes = new TextEncoder().encode('knotebook')
 const digest = await sha256Hex(digestBytes.slice().buffer as ArrayBuffer)

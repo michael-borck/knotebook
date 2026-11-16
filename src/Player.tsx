@@ -45,6 +45,7 @@ export default function Player() {
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null)
   const [catalogueError, setCatalogueError] = useState<string | null>(null)
   const [catalogueLoading, setCatalogueLoading] = useState(false)
+  const [themeFilter, setThemeFilter] = useState('')
   const [installing, setInstalling] = useState<string | null>(null)
   const [pack, setPack] = useState<Pack | null>(null)
   const [turns, setTurns] = useState<string[]>([])
@@ -67,6 +68,24 @@ export default function Player() {
     envStoreKey ||
     (catalogueTarget.custom ? catalogue?.publicKey : PINNED_STORE_PUBLIC_KEY)
   const trustHost = !envStoreKey && catalogueTarget.custom
+
+  const storeThemes = useMemo(() => {
+    if (!catalogue) return []
+    return [...new Set(catalogue.packs.map((pack) => pack.theme))].sort((a, b) =>
+      getTheme(a).title.localeCompare(getTheme(b).title),
+    )
+  }, [catalogue])
+  const storePacks = useMemo(
+    () =>
+      catalogue?.packs.filter(
+        (pack) => !themeFilter || pack.theme === themeFilter,
+      ) ?? [],
+    [catalogue, themeFilter],
+  )
+
+  useEffect(() => {
+    if (themeFilter && !storeThemes.includes(themeFilter)) setThemeFilter('')
+  }, [storeThemes, themeFilter])
 
   useEffect(() => {
     let active = true
@@ -410,6 +429,31 @@ export default function Player() {
               Refresh
             </button>
           </div>
+          {storeThemes.length > 1 && (
+            <div
+              className="store-filters"
+              role="group"
+              aria-label="Filter packs by theme"
+            >
+              <button
+                type="button"
+                className={themeFilter === '' ? 'active' : ''}
+                onClick={() => setThemeFilter('')}
+              >
+                All
+              </button>
+              {storeThemes.map((theme) => (
+                <button
+                  key={theme}
+                  type="button"
+                  className={themeFilter === theme ? 'active' : ''}
+                  onClick={() => setThemeFilter(theme)}
+                >
+                  {getTheme(theme).title}
+                </button>
+              ))}
+            </div>
+          )}
           {trustHost && storePublicKey && (
             <p className="muted small">
               Catalogue-provided key — this store is trusted by the host.
@@ -430,9 +474,9 @@ export default function Player() {
               </p>
             </div>
           )}
-          {catalogue && catalogue.packs.length > 0 && (
+          {catalogue && storePacks.length > 0 && (
             <ul className="pack-grid">
-              {catalogue.packs.map((entry) => {
+              {storePacks.map((entry) => {
                 const installedEntry = library.find(
                   (item) => item.id === entry.id,
                 )
@@ -485,6 +529,9 @@ export default function Player() {
                 )
               })}
             </ul>
+          )}
+          {catalogue && catalogue.packs.length > 0 && storePacks.length === 0 && (
+            <p className="muted">No packs match this theme.</p>
           )}
           {catalogue && catalogue.packs.length === 0 && (
             <p className="muted">The catalogue is empty.</p>
