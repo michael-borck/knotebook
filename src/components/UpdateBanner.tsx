@@ -83,7 +83,11 @@ export default function UpdateBanner() {
                 : `You are on ${update.currentVersion}.`}
         </span>
         {status === 'downloading' && (
-          <progress value={progress ?? 0} max={1} />
+          <progress
+            value={progress ?? 0}
+            max={1}
+            aria-label="Update download progress"
+          />
         )}
       </div>
       <div className="update-actions">

@@ -221,7 +221,7 @@ export function buildStandaloneHtml({
     `<h1>${safeTitle}</h1>`,
     '<img id="cover" alt="" hidden />',
     '<img id="scene" alt="" hidden />',
-    '<div id="out"></div>',
+    '<div id="out" aria-live="polite"></div>',
     '<div id="choices"></div>',
     '</main>',
     '<div id="bar"><button id="restart" type="button">Restart</button></div>',

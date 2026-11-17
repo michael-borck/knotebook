@@ -1,7 +1,6 @@
 # Knotebook — build plan
 
-Status: **Phases 0–5 complete; Phase 6 polish remaining.** Last updated:
-2026-11-16.
+Status: **All phases complete.** Last updated: 2026-11-16.
 
 ## Product
 
@@ -197,6 +196,15 @@ prompts to install and restart. The per-app updater public key is in
 ### Phase 6 — polish
 Icon, signing/notarization, GitHub Actions release workflow, docs,
 accessibility.
+
+**Implemented:**
+- App and PWA icons, including maskable variants.
+- Tag-gated release workflow with preflight checks and macOS notarization.
+- README, `docs/PLAN.md`, `docs/STORE.md`, and storefront/submission docs.
+- Accessibility: visible focus rings, heading/landmark structure, labelled
+  forms, `aria-live` story/toast updates, `aria-pressed`/`aria-current` state,
+  and a keyboard-focusable knot map.
+- Phase 6 is complete.
 
 ## Decisions
 

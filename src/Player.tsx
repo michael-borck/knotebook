@@ -53,6 +53,7 @@ export default function Player() {
   const [savedImage, setSavedImage] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const storyRef = useRef<Story | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const catalogueTarget = useMemo(() => {
     const params = new URLSearchParams(window.location.search)
@@ -298,12 +299,12 @@ export default function Player() {
           <button type="button" className="ghost" onClick={backToLibrary}>
             ← Library
           </button>
-          <div className="player-title">{pack.title}</div>
+          <h1 className="player-title">{pack.title}</h1>
           <span className="theme-chip">{theme.title}</span>
         </header>
         <main className="reader">
           {imageUrl && <img className="scene-image" src={imageUrl} alt="" />}
-          <div className="reader-text">
+          <div className="reader-text" role="log" aria-live="polite">
             {turns.map((turn, turnIndex) =>
               turn.split(/\n{2,}/).map((paragraph, index) => (
                 <p key={`${turnIndex}-${index}`}>{paragraph}</p>
@@ -330,7 +331,11 @@ export default function Player() {
             </button>
           </div>
         </main>
-        {toast && <div className="toast">{toast}</div>}
+        {toast && (
+          <div className="toast" role="status" aria-live="polite">
+            {toast}
+          </div>
+        )}
       </div>
     )
   }
@@ -345,6 +350,7 @@ export default function Player() {
           <button
             type="button"
             className={view === 'library' ? 'active' : ''}
+            aria-current={view === 'library' ? 'page' : undefined}
             onClick={() => setView('library')}
           >
             Library
@@ -352,6 +358,7 @@ export default function Player() {
           <button
             type="button"
             className={view === 'store' ? 'active' : ''}
+            aria-current={view === 'store' ? 'page' : undefined}
             onClick={() => void openStore()}
           >
             Store
@@ -364,15 +371,21 @@ export default function Player() {
         <main className="library">
           <div className="library-head">
             <h1>Library</h1>
-            <label className="import-button">
+            <button
+              type="button"
+              className="import-button"
+              onClick={() => fileInputRef.current?.click()}
+            >
               Import pack
-              <input
-                type="file"
-                accept=".json,application/json"
-                onChange={handleImport}
-                hidden
-              />
-            </label>
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={handleImport}
+              className="sr-only"
+              tabIndex={-1}
+            />
           </div>
           {library.length === 0 ? (
             <p className="muted">
@@ -438,6 +451,7 @@ export default function Player() {
               <button
                 type="button"
                 className={themeFilter === '' ? 'active' : ''}
+                aria-pressed={themeFilter === ''}
                 onClick={() => setThemeFilter('')}
               >
                 All
@@ -447,6 +461,7 @@ export default function Player() {
                   key={theme}
                   type="button"
                   className={themeFilter === theme ? 'active' : ''}
+                  aria-pressed={themeFilter === theme}
                   onClick={() => setThemeFilter(theme)}
                 >
                   {getTheme(theme).title}
@@ -539,7 +554,11 @@ export default function Player() {
         </main>
       )}
 
-      {toast && <div className="toast">{toast}</div>}
+      {toast && (
+        <div className="toast" role="status" aria-live="polite">
+          {toast}
+        </div>
+      )}
     </div>
   )
 }

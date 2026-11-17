@@ -648,7 +648,7 @@ function App() {
   return (
     <div className="app">
       <header className="toolbar">
-        <div className="brand">Knotebook</div>
+        <h1 className="brand">Knotebook</h1>
         <div className="actions">
           <button type="button" onClick={handleOpen}>
             Open
@@ -721,7 +721,7 @@ function App() {
       <main className="workspace">
         <aside className="pane project-pane">
           <div className="pane-head">
-            <span>Project</span>
+            <h2>Project</h2>
             {projectRoot && (
               <span className={`save ${saveState}`}>{saveState}</span>
             )}
@@ -784,11 +784,12 @@ function App() {
 
         <section className="pane editor-pane">
           <div className="pane-head">
-            <span>Story</span>
+            <h2>Story</h2>
             <div className="view-toggle">
               <button
                 type="button"
                 className={editorView === 'text' ? 'active' : ''}
+                aria-pressed={editorView === 'text'}
                 onClick={() => setEditorView('text')}
               >
                 Text
@@ -796,6 +797,7 @@ function App() {
               <button
                 type="button"
                 className={editorView === 'map' ? 'active' : ''}
+                aria-pressed={editorView === 'map'}
                 onClick={() => setEditorView('map')}
               >
                 Map
@@ -835,10 +837,12 @@ function App() {
         </section>
 
         <section className="pane side-pane">
+          <h2 className="sr-only">Studio panels</h2>
           <div className="tabs">
             <button
               type="button"
               className={tab === 'preview' ? 'active' : ''}
+              aria-pressed={tab === 'preview'}
               onClick={() => setTab('preview')}
             >
               Preview
@@ -846,6 +850,7 @@ function App() {
             <button
               type="button"
               className={tab === 'issues' ? 'active' : ''}
+              aria-pressed={tab === 'issues'}
               onClick={() => setTab('issues')}
             >
               Issues ({issues.length})
@@ -853,6 +858,7 @@ function App() {
             <button
               type="button"
               className={tab === 'bible' ? 'active' : ''}
+              aria-pressed={tab === 'bible'}
               onClick={() => setTab('bible')}
             >
               Bible
@@ -860,6 +866,7 @@ function App() {
             <button
               type="button"
               className={tab === 'ai' ? 'active' : ''}
+              aria-pressed={tab === 'ai'}
               onClick={() => setTab('ai')}
             >
               AI
@@ -905,7 +912,11 @@ function App() {
         </section>
       </main>
 
-      {toast && <div className="toast">{toast}</div>}
+      {toast && (
+        <div className="toast" role="status" aria-live="polite">
+          {toast}
+        </div>
+      )}
     </div>
   )
 }
@@ -930,7 +941,7 @@ function Preview({
   return (
     <div className="preview" style={themeStyle}>
       {imageUrl && <img className="preview-image" src={imageUrl} alt="" />}
-      <div className="story-text">
+      <div className="story-text" role="log" aria-live="polite">
         {play.text ? (
           play.text.split(/\n{2,}/).map((paragraph, index) => (
             <p key={index}>{paragraph}</p>
@@ -1046,6 +1057,7 @@ function BibleEditor({
       <textarea
         value={text}
         spellCheck={false}
+        aria-label="Story bible JSON"
         onChange={(event) => onChange(event.target.value)}
       />
       {error && <div className="bible-error">{error}</div>}

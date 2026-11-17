@@ -187,6 +187,8 @@ export default function KnotGraph({
         minZoom={0.2}
         proOptions={{ hideAttribution: true }}
         nodesConnectable={false}
+        nodesFocusable
+        aria-label="Knot map"
         onNodeClick={(_, node) => {
           const data = node.data as KnotNodeData
           if (data.line > 0) onJump(data.line, data.file)
