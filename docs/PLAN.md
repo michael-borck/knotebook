@@ -138,11 +138,12 @@ Exit: third-party PR → reviewed → signed → installable.
   `src/lib/catalogue.ts`; `VITE_STORE_PUBLIC_KEY` overrides it for self-hosted
   catalogues.
 - `scripts/build-catalogue.ts` — hash and sign a folder of packs into a catalogue.
-- `scripts/make-sample-pack.ts` — bundled signed demo store in `public/`.
+- `scripts/make-demo-store.ts` — six demo packs with generated cover art and a
+  bundled signed demo store in `public/`.
 - Player **Store** tab: catalogue URL via `?store=` / `VITE_CATALOGUE_URL` /
   `./catalogue.json`; install verifies **SHA-256** and **signature** before
-  IndexedDB. Packs and catalogues have size caps, and the store filters packs by
-  theme.
+  IndexedDB. Packs and catalogues have size caps, the store filters by
+  theme/installed/updates, and cards render an optional catalogue `cover`.
 - `docs/STORE.md`, `templates/submission.json`.
 - `knotebook-packs`: submission queue with schema validation and CI.
 - `knotebook-store`: static storefront, signed catalogue, verifier, theme filters,

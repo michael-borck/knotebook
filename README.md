@@ -142,7 +142,8 @@ assets and cover. Import it directly, or publish it through a static catalogue.
 - Catalogue format, submission flow and signing: [`docs/STORE.md`](docs/STORE.md).
 
 Demo store is generated with `npm run store:demo` (six demo packs across six
-themes).
+themes). Cover art is generated with `limn` into `scripts/demo-art/` and embedded
+as JPEG data URLs; if an image is missing, the script draws an SVG fallback.
 
 ## Docs
 

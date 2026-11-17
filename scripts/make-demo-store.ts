@@ -245,6 +245,12 @@ function artwork(id: string, accent: string): string {
   }
 }
 
+function artDataUrl(id: string): string | null {
+  const path = `scripts/demo-art/${id}.jpg`
+  if (!existsSync(path)) return null
+  return `data:image/jpeg;base64,${readFileSync(path).toString('base64')}`
+}
+
 function coverDataUrl(
   id: string,
   title: string,
@@ -292,8 +298,11 @@ const packs = demos.map((demo) => {
     process.exit(1)
   }
   const theme = getTheme(demo.theme)
-  const cover = coverDataUrl(demo.id, demo.title, theme.accent, theme.bg)
-  const assets: Record<string, string> = { 'assets/cover.svg': cover }
+  const generatedCover = artDataUrl(demo.id)
+  const cover =
+    generatedCover ?? coverDataUrl(demo.id, demo.title, theme.accent, theme.bg)
+  const coverPath = generatedCover ? 'assets/cover.jpg' : 'assets/cover.svg'
+  const assets: Record<string, string> = { [coverPath]: cover }
   if (demo.scene) {
     assets['assets/scene.svg'] = sceneDataUrl(theme.accent, theme.bg)
   }
