@@ -477,6 +477,17 @@
   white-space: nowrap;
 }
 
+.knot-note {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .knot-meta {
   font-size: 10px;
   color: var(--muted);

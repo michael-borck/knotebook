@@ -82,6 +82,9 @@ highlighting.
 - Studio **Text / Map** toggle; the map is the default view. Click a knot to
   open a side drawer and edit just that knot; chevrons expand/collapse branches,
   and loop-backs are dashed amber edges with a cycle-aware layout.
+- Nodes are draggable; manual positions and collapsed branches persist in
+  localStorage. `# note:` and `# group:` / `# chapter:` tags annotate nodes and
+  colour groups without changing the ink flow.
 - Use **Open in text** in the drawer to jump to the knot's line; the entry knot
   is highlighted and missing targets are red.
 - **Coverage**: knots visited by the live preview get a green dot; the legend

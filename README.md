@@ -29,10 +29,11 @@ Knotebook is two apps in one codebase:
 
 - **Knotebook Studio** — Tauri desktop app: write, compile, preview, lint,
   theme, and build self-contained packs. The **knot map** is the default view:
-  click a knot to edit it in a side drawer, use the chevrons to expand or
-  collapse branches, and loop-backs render as dashed edges. It also shows
-  coverage, dead-end and unreachable highlighting, and an **AI assistant** with
-  diff review and snapshots.
+  click a knot to edit it in a side drawer, drag nodes to rearrange them (layout
+  persists), use chevrons to expand/collapse branches, and loop-backs render as
+  dashed edges. Add `# note:` or `# group:` tags to annotate and colour groups.
+  It also shows coverage, dead-end and unreachable highlighting, and an **AI
+  assistant** with diff review and snapshots.
 - **Knotebook Player** — PWA: install packs, play offline, save progress.
 
 Themes reuse the Swipeverse art sets (`noir`, `kingdom`, `cyberpunk`, …).

@@ -59,6 +59,7 @@ export default function KnotDrawer({
           <strong>{knot.id}</strong>
           <span className="knot-drawer-meta">
             {knot.file}:{knot.line} · {knot.kind}
+            {knot.group ? ` · ${knot.group}` : ''}
           </span>
         </div>
         <button
@@ -74,6 +75,12 @@ export default function KnotDrawer({
       <p className="knot-drawer-note">
         Editing this knot only. The map stays in place.
       </p>
+
+      {knot.note && (
+        <p className="knot-drawer-note">
+          <strong>Note:</strong> {knot.note}
+        </p>
+      )}
 
       <textarea
         ref={textareaRef}

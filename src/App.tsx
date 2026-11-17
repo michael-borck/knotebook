@@ -115,6 +115,9 @@ function App() {
       : path
         ? `file:${path}`
         : 'sample'
+  const mapStateKey = projectRoot
+    ? `project:${projectRoot}`
+    : `file:${path ?? 'sample'}`
 
   useEffect(() => {
     setSelectedKnot(null)
@@ -885,9 +888,11 @@ function App() {
               <div className="map-with-drawer">
                 <div className="map-canvas">
                   <KnotGraph
+                    key={mapStateKey}
                     graph={graph}
                     visited={visited}
                     selectedId={selectedKnot?.id ?? null}
+                    stateKey={mapStateKey}
                     onSelect={(node) => setSelectedKnot(node)}
                     onResetCoverage={handleResetCoverage}
                   />

@@ -8,6 +8,7 @@ export interface GraphNode {
   file: string
   line: number
   words: number
+  tags: string[]
   entry: boolean
   missing: boolean
   terminal: boolean
@@ -35,6 +36,7 @@ interface RawNode {
   file: string
   line: number
   words: number
+  tags: string[]
   hasChoices: boolean
   terminal: boolean
 }
@@ -73,6 +75,7 @@ export function parseGraph(files: Record<string, string>): Graph {
       file,
       line,
       words: 0,
+      tags: [],
       hasChoices: false,
       terminal: false,
     }
@@ -104,6 +107,13 @@ export function parseGraph(files: Record<string, string>): Graph {
         const name = stitchMatch[1]
         currentId = `${currentKnot}.${name}`
         ensureRawNode(currentId, name, 'stitch', currentKnot, file, index + 1)
+        return
+      }
+
+      if (line.trim().startsWith('#')) {
+        const tag = line.trim().replace(/^#\s*/, '').trim()
+        const node = currentId ? rawNodes.get(currentId) : null
+        if (node && tag) node.tags.push(tag)
         return
       }
 
@@ -208,6 +218,7 @@ export function parseGraph(files: Record<string, string>): Graph {
       file: raw.file,
       line: raw.line,
       words: raw.words,
+      tags: [...raw.tags],
       entry: false,
       missing,
       terminal: raw.terminal,
@@ -262,4 +273,15 @@ function collectDiverts(
   while ((match = DIVERT_RE.exec(line))) {
     onTarget(match[1])
   }
+}
+
+export function tagValue(tags: string[], name: string): string | null {
+  const prefix = `${name}:`
+  for (const tag of tags) {
+    const trimmed = tag.trim()
+    if (trimmed.toLowerCase().startsWith(prefix)) {
+      return trimmed.slice(prefix.length).trim()
+    }
+  }
+  return null
 }

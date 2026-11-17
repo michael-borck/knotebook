@@ -13,8 +13,13 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react'
 import dagre from 'dagre'
-import type { Graph } from '../lib/graph'
+import { tagValue, type Graph } from '../lib/graph'
 import { computeGraphView } from '../lib/graphView'
+import {
+  loadMapState,
+  saveMapState,
+  type MapPosition,
+} from '../lib/mapState'
 import type { KnotSelection } from '../lib/types'
 import '@xyflow/react/dist/style.css'
 
@@ -33,7 +38,27 @@ export interface KnotNodeData extends Record<string, unknown> {
   hasChildren: boolean
   collapsed: boolean
   selected: boolean
+  note: string | null
+  group: string | null
   onToggle?: (id: string) => void
+}
+
+const GROUP_COLORS = [
+  '#c084fc',
+  '#60a5fa',
+  '#4ade80',
+  '#fbbf24',
+  '#f87171',
+  '#22d3ee',
+  '#f472b6',
+]
+
+function groupColor(name: string): string {
+  let hash = 0
+  for (const character of name) {
+    hash = (hash * 31 + character.charCodeAt(0)) >>> 0
+  }
+  return GROUP_COLORS[hash % GROUP_COLORS.length]
 }
 
 const NODE_WIDTH = 176
@@ -54,6 +79,8 @@ function KnotNode({ id, data }: NodeProps) {
     .filter(Boolean)
     .join(' ')
 
+  const group = node.group
+  const groupColorValue = group ? groupColor(group) : null
   const meta = node.missing
     ? 'missing target'
     : node.deadEnd
@@ -64,8 +91,17 @@ function KnotNode({ id, data }: NodeProps) {
           ? `${node.parent ?? 'stitch'} · ${node.words} words`
           : `${node.file} · ${node.words} words`
 
+  const metaWithGroup = group ? `${meta} · ${group}` : meta
+
   return (
-    <div className={className}>
+    <div
+      className={className}
+      style={
+        groupColorValue
+          ? { borderLeftColor: groupColorValue, borderLeftWidth: 3 }
+          : undefined
+      }
+    >
       <Handle
         type="target"
         position={Position.Left}
@@ -74,6 +110,11 @@ function KnotNode({ id, data }: NodeProps) {
       <div className="knot-title-row">
         {node.covered && <span className="knot-dot" />}
         <span className="knot-title">{node.label}</span>
+        {node.note && (
+          <span className="knot-note" title={node.note}>
+            note
+          </span>
+        )}
         {node.hasChildren && (
           <button
             type="button"
@@ -89,7 +130,7 @@ function KnotNode({ id, data }: NodeProps) {
           </button>
         )}
       </div>
-      <div className="knot-meta">{meta}</div>
+      <div className="knot-meta">{metaWithGroup}</div>
       <Handle
         type="source"
         position={Position.Right}
@@ -103,6 +144,7 @@ interface KnotGraphProps {
   graph: Graph
   visited: Set<string>
   selectedId: string | null
+  stateKey: string
   onSelect: (node: KnotSelection) => void
   onResetCoverage?: () => void
 }
@@ -111,13 +153,26 @@ export default function KnotGraph({
   graph,
   visited,
   selectedId,
+  stateKey,
   onSelect,
   onResetCoverage,
 }: KnotGraphProps) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  const [collapsed, setCollapsed] = useState<Set<string>>(
+    () => new Set(loadMapState(stateKey).collapsed),
+  )
+  const [positions, setPositions] = useState<Record<string, MapPosition>>(
+    () => loadMapState(stateKey).positions,
+  )
   const flowRef = useRef<ReactFlowInstance<Node<KnotNodeData>, Edge> | null>(
     null,
   )
+
+  useEffect(() => {
+    saveMapState(stateKey, {
+      positions,
+      collapsed: [...collapsed],
+    })
+  }, [stateKey, positions, collapsed])
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -156,7 +211,10 @@ export default function KnotGraph({
     dagre.layout(layout)
 
     const nodes: Node<KnotNodeData>[] = visibleNodes.map((node) => {
-      const position = layout.node(node.id)
+      const position = positions[node.id] ?? layout.node(node.id)
+      const note = tagValue(node.tags, 'note')
+      const group =
+        tagValue(node.tags, 'group') ?? tagValue(node.tags, 'chapter')
       return {
         id: node.id,
         type: 'knot',
@@ -179,6 +237,8 @@ export default function KnotGraph({
           hasChildren: graph.edges.some((edge) => edge.source === node.id),
           collapsed: collapsed.has(node.id),
           selected: node.id === selectedId,
+          note,
+          group,
           onToggle: (id: string) => {
             setCollapsed((previous) => {
               const next = new Set(previous)
@@ -221,6 +281,7 @@ export default function KnotGraph({
     visibleEdges,
     cycleEdges,
     collapsed,
+    positions,
     visited,
     selectedId,
     graph.edges,
@@ -288,6 +349,18 @@ export default function KnotGraph({
         >
           Collapse all
         </button>
+        <button
+          type="button"
+          className="legend-reset"
+          onClick={() => {
+            setPositions({})
+            window.setTimeout(() => {
+              void flowRef.current?.fitView({ padding: 0.2 })
+            }, 60)
+          }}
+        >
+          Reset layout
+        </button>
         {onResetCoverage && (
           <button
             type="button"
@@ -305,6 +378,7 @@ export default function KnotGraph({
         fitView
         minZoom={0.2}
         nodesConnectable={false}
+        nodesDraggable
         nodesFocusable
         aria-label="Knot map"
         onInit={(instance) => {
@@ -319,8 +393,16 @@ export default function KnotGraph({
               file: data.file,
               line: data.line,
               kind: data.kind,
+              note: data.note,
+              group: data.group,
             })
           }
+        }}
+        onNodeDragStop={(_, node) => {
+          setPositions((previous) => ({
+            ...previous,
+            [node.id]: { x: node.position.x, y: node.position.y },
+          }))
         }}
       >
         <Background color="#232633" gap={20} />

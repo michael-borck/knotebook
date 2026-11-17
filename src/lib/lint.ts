@@ -5,6 +5,7 @@ const KNOT_PATTERN = /^===\s*([A-Za-z_][A-Za-z0-9_]*)\s*===\s*$/
 const TODO_PATTERN = /\b(TODO|FIXME|XXX)\b/i
 const TAG_PATTERN = /#\s*([A-Za-z][A-Za-z0-9_-]*)/g
 const DIVERT_PATTERN = /->\s*([A-Za-z_][A-Za-z0-9_]*)/g
+const STRUCTURAL_TAGS = new Set(['note', 'group', 'chapter'])
 
 interface Knot {
   name: string
@@ -89,7 +90,13 @@ export function lintInk(source: string, bible: StoryBible): Issue[] {
     TAG_PATTERN.lastIndex = 0
     while ((match = TAG_PATTERN.exec(raw))) {
       const tag = match[1]
-      if (allowed.has(tag) || reported.has(tag)) continue
+      if (
+        allowed.has(tag) ||
+        STRUCTURAL_TAGS.has(tag.toLowerCase()) ||
+        reported.has(tag)
+      ) {
+        continue
+      }
       reported.add(tag)
       issues.push({
         severity: 'info',

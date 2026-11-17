@@ -6,7 +6,7 @@ import { choose, compileInk, nodeFromPath, readTurn } from '../src/lib/ink'
 import { countWords, lintInk } from '../src/lib/lint'
 import { DEFAULT_BIBLE } from '../src/lib/bible'
 import { buildPack, parsePack } from '../src/lib/pack'
-import { parseGraph } from '../src/lib/graph'
+import { parseGraph, tagValue } from '../src/lib/graph'
 import { computeGraphView } from '../src/lib/graphView'
 import { compareVersions } from '../src/lib/version'
 import {
@@ -57,6 +57,36 @@ const issues = lintInk(source, DEFAULT_BIBLE)
 check('no lint errors', issues.every((issue) => issue.severity !== 'error'))
 check('todo detected', issues.some((issue) => issue.message.includes('TODO')))
 check('word count', countWords(source) > 50)
+
+const taggedGraph = parseGraph({
+  'story.ink':
+    '=== a ===\n# note: remember this\n# group: act1\nText\n-> END\n',
+})
+const taggedNode = taggedGraph.nodes.find((node) => node.id === 'a')
+check(
+  'graph captures tags',
+  taggedNode?.tags.includes('note: remember this') === true &&
+    taggedNode?.tags.includes('group: act1') === true,
+)
+check(
+  'tagValue reads note',
+  tagValue(taggedNode?.tags ?? [], 'note') === 'remember this',
+)
+check(
+  'tagValue reads group',
+  tagValue(taggedNode?.tags ?? [], 'group') === 'act1',
+)
+const taggedIssues = lintInk(
+  '=== a ===\n# note: hi\n# group: act1\nText\n-> END\n',
+  DEFAULT_BIBLE,
+)
+check(
+  'lint allows structural tags',
+  !taggedIssues.some(
+    (issue) =>
+      issue.message.includes('#note') || issue.message.includes('#group'),
+  ),
+)
 
 const exportModel = buildStoryModel(source)
 check(

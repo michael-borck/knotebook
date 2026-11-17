@@ -26,4 +26,6 @@ export interface KnotSelection {
   file: string
   line: number
   kind: 'knot' | 'stitch'
+  note?: string | null
+  group?: string | null
 }
