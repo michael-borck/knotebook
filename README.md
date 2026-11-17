@@ -34,7 +34,9 @@ Knotebook is two apps in one codebase:
   dashed edges. Add `# note:` or `# group:` tags to annotate and colour groups.
   It also shows coverage, dead-end and unreachable highlighting, and an **AI
   assistant** with diff review and snapshots.
-- **Knotebook Player** — PWA: install packs, play offline, save progress.
+- **Knotebook Player** — PWA: install packs, play offline, save progress. The
+  Library keeps installed packs and recently played stories; the Store filters
+  by All / Installed / Updates and by theme.
 
 Themes reuse the Swipeverse art sets (`noir`, `kingdom`, `cyberpunk`, …).
 
@@ -137,7 +139,8 @@ assets and cover. Import it directly, or publish it through a static catalogue.
 - Player → **Import pack**, or → **Store** with `?store=<catalogue-url>`.
 - Catalogue format, submission flow and signing: [`docs/STORE.md`](docs/STORE.md).
 
-Demo store is generated with `npm run store:demo`.
+Demo store is generated with `npm run store:demo` (six demo packs across six
+themes).
 
 ## Docs
 

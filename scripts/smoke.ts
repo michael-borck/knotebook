@@ -610,12 +610,35 @@ check('sha256 matches node', digest === expectedDigest)
 
 const demoPackBytes = readFileSync('public/sample.knotebook.json')
 const demoCatalogue = parseCatalogue(readFileSync('public/catalogue.json', 'utf8'))
+check(
+  'demo catalogue has multiple packs',
+  (demoCatalogue.catalogue?.packs.length ?? 0) >= 5,
+)
 const demoDigest = createHash('sha256').update(demoPackBytes).digest('hex')
 check(
   'demo catalogue matches pack',
   demoCatalogue.catalogue?.packs[0]?.sha256 === demoDigest,
 )
 check('demo pack parses', parsePack(demoPackBytes.toString('utf8')).pack !== null)
+const demoStore = demoCatalogue.catalogue
+const demoStoreKey = demoStore?.publicKey
+for (const entry of demoStore?.packs ?? []) {
+  const bytes = readFileSync(`public/${entry.url}`)
+  check(
+    `demo pack parses ${entry.id}`,
+    parsePack(bytes.toString('utf8')).pack !== null,
+  )
+  if (entry.signature && demoStoreKey) {
+    check(
+      `demo signature verifies ${entry.id}`,
+      verifyPackSignature(
+        entry,
+        new Uint8Array(bytes).buffer as ArrayBuffer,
+        demoStoreKey,
+      ),
+    )
+  }
+}
 
 const demoEntry = demoCatalogue.catalogue?.packs[0]
 const demoPublicKey = demoCatalogue.catalogue?.publicKey

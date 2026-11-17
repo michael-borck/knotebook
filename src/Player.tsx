@@ -23,13 +23,17 @@ import {
 import { firstImageTag } from './lib/tags'
 import { compareVersions } from './lib/version'
 import {
+  clearHistory,
   clearProgress,
   installPack,
+  listHistory,
   listLibrary,
   loadPack,
   loadProgress,
+  recordPlayed,
   removePack,
   saveProgress,
+  type HistoryEntry,
   type LibraryEntry,
 } from './lib/storage'
 import type { PlayView } from './lib/types'
@@ -41,11 +45,15 @@ type View = 'library' | 'store'
 
 export default function Player() {
   const [library, setLibrary] = useState<LibraryEntry[]>([])
+  const [history, setHistory] = useState<HistoryEntry[]>([])
   const [view, setView] = useState<View>('library')
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null)
   const [catalogueError, setCatalogueError] = useState<string | null>(null)
   const [catalogueLoading, setCatalogueLoading] = useState(false)
   const [themeFilter, setThemeFilter] = useState('')
+  const [storeFilter, setStoreFilter] = useState<
+    'all' | 'installed' | 'updates'
+  >('all')
   const [installing, setInstalling] = useState<string | null>(null)
   const [pack, setPack] = useState<Pack | null>(null)
   const [turns, setTurns] = useState<string[]>([])
@@ -76,13 +84,36 @@ export default function Player() {
       getTheme(a).title.localeCompare(getTheme(b).title),
     )
   }, [catalogue])
-  const storePacks = useMemo(
-    () =>
-      catalogue?.packs.filter(
-        (pack) => !themeFilter || pack.theme === themeFilter,
-      ) ?? [],
-    [catalogue, themeFilter],
-  )
+  const storePacks = useMemo(() => {
+    const entries = catalogue?.packs ?? []
+    const filtered = entries.filter((entry) => {
+      const installed = library.find((item) => item.id === entry.id)
+      if (storeFilter === 'installed') return Boolean(installed)
+      if (storeFilter === 'updates') {
+        return Boolean(
+          installed &&
+            compareVersions(entry.release ?? '1.0.0', installed.release) > 0,
+        )
+      }
+      return true
+    })
+    return filtered.filter(
+      (pack) => !themeFilter || pack.theme === themeFilter,
+    )
+  }, [catalogue, library, storeFilter, themeFilter])
+
+  const catalogueInstalledCount =
+    catalogue?.packs.filter((entry) =>
+      library.some((item) => item.id === entry.id),
+    ).length ?? 0
+  const updatesCount =
+    catalogue?.packs.filter((entry) => {
+      const installed = library.find((item) => item.id === entry.id)
+      return Boolean(
+        installed &&
+          compareVersions(entry.release ?? '1.0.0', installed.release) > 0,
+      )
+    }).length ?? 0
 
   useEffect(() => {
     if (themeFilter && !storeThemes.includes(themeFilter)) setThemeFilter('')
@@ -93,6 +124,11 @@ export default function Player() {
     listLibrary()
       .then((entries) => {
         if (active) setLibrary(entries)
+      })
+      .catch(() => undefined)
+    listHistory()
+      .then((entries) => {
+        if (active) setHistory(entries)
       })
       .catch(() => undefined)
     return () => {
@@ -139,6 +175,10 @@ export default function Player() {
       return
     }
     storyRef.current = story
+    void recordPlayed(next)
+      .then(() => listHistory())
+      .then((entries) => setHistory(entries))
+      .catch(() => undefined)
     const saved = await loadProgress(next.id)
     if (saved) {
       try {
@@ -387,6 +427,40 @@ export default function Player() {
               tabIndex={-1}
             />
           </div>
+          {history.length > 0 && (
+            <section className="recent">
+              <div className="recent-head">
+                <h2>Recently played</h2>
+                <button
+                  type="button"
+                  className="mini"
+                  onClick={() => {
+                    void clearHistory()
+                    setHistory([])
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
+              <ul className="recent-list">
+                {history.slice(0, 6).map((entry) => (
+                  <li key={entry.id}>
+                    <button
+                      type="button"
+                      className="recent-play"
+                      onClick={() => void startPack(entry.id)}
+                    >
+                      {entry.cover && <img src={entry.cover} alt="" />}
+                      <span>{entry.title}</span>
+                    </button>
+                    <span className="muted small">
+                      {new Date(entry.lastPlayed).toLocaleDateString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           {library.length === 0 ? (
             <p className="muted">
               No packs installed. Import a pack or open the Store.
@@ -442,6 +516,38 @@ export default function Player() {
               Refresh
             </button>
           </div>
+          {catalogue && catalogue.packs.length > 0 && (
+            <div
+              className="store-filters"
+              role="group"
+              aria-label="Filter store"
+            >
+              <button
+                type="button"
+                className={storeFilter === 'all' ? 'active' : ''}
+                aria-pressed={storeFilter === 'all'}
+                onClick={() => setStoreFilter('all')}
+              >
+                All ({catalogue.packs.length})
+              </button>
+              <button
+                type="button"
+                className={storeFilter === 'installed' ? 'active' : ''}
+                aria-pressed={storeFilter === 'installed'}
+                onClick={() => setStoreFilter('installed')}
+              >
+                Installed ({catalogueInstalledCount})
+              </button>
+              <button
+                type="button"
+                className={storeFilter === 'updates' ? 'active' : ''}
+                aria-pressed={storeFilter === 'updates'}
+                onClick={() => setStoreFilter('updates')}
+              >
+                Updates ({updatesCount})
+              </button>
+            </div>
+          )}
           {storeThemes.length > 1 && (
             <div
               className="store-filters"
@@ -546,7 +652,7 @@ export default function Player() {
             </ul>
           )}
           {catalogue && catalogue.packs.length > 0 && storePacks.length === 0 && (
-            <p className="muted">No packs match this theme.</p>
+            <p className="muted">No packs match this filter.</p>
           )}
           {catalogue && catalogue.packs.length === 0 && (
             <p className="muted">The catalogue is empty.</p>

@@ -1,10 +1,11 @@
 import type { Pack } from './pack'
 
 const DB_NAME = 'knotebook'
-const DB_VERSION = 2
+const DB_VERSION = 3
 const PACK_STORE = 'packs'
 const PROGRESS_STORE = 'progress'
 const LIBRARY_STORE = 'library'
+const HISTORY_STORE = 'history'
 
 export interface LibraryEntry {
   id: string
@@ -20,6 +21,14 @@ export interface SavedProgress {
   state: string
   turns: string[]
   image?: string
+}
+
+export interface HistoryEntry {
+  id: string
+  title: string
+  theme: string
+  cover?: string
+  lastPlayed: string
 }
 
 interface PackRecord {
@@ -51,6 +60,9 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(LIBRARY_STORE)) {
         db.createObjectStore(LIBRARY_STORE, { keyPath: 'id' })
+      }
+      if (!db.objectStoreNames.contains(HISTORY_STORE)) {
+        db.createObjectStore(HISTORY_STORE, { keyPath: 'id' })
       }
     }
     request.onsuccess = () => resolve(request.result)
@@ -130,6 +142,36 @@ export async function installPack(pack: Pack): Promise<LibraryEntry> {
   return entry
 }
 
+export async function recordPlayed(pack: Pack): Promise<void> {
+  const db = await openDb()
+  const entry: HistoryEntry = {
+    id: pack.id,
+    title: pack.title,
+    theme: pack.theme,
+    cover: pack.cover,
+    lastPlayed: new Date().toISOString(),
+  }
+  const tx = db.transaction(HISTORY_STORE, 'readwrite')
+  tx.objectStore(HISTORY_STORE).put(entry)
+  await transactionDone(tx)
+}
+
+export async function listHistory(): Promise<HistoryEntry[]> {
+  const db = await openDb()
+  const tx = db.transaction(HISTORY_STORE, 'readonly')
+  const records = await requestResult(
+    tx.objectStore(HISTORY_STORE).getAll() as IDBRequest<HistoryEntry[]>,
+  )
+  return records.sort((a, b) => b.lastPlayed.localeCompare(a.lastPlayed))
+}
+
+export async function clearHistory(): Promise<void> {
+  const db = await openDb()
+  const tx = db.transaction(HISTORY_STORE, 'readwrite')
+  tx.objectStore(HISTORY_STORE).clear()
+  await transactionDone(tx)
+}
+
 export async function loadPack(id: string): Promise<Pack | null> {
   const db = await openDb()
   const tx = db.transaction(PACK_STORE, 'readonly')
@@ -142,12 +184,13 @@ export async function loadPack(id: string): Promise<Pack | null> {
 export async function removePack(id: string): Promise<void> {
   const db = await openDb()
   const tx = db.transaction(
-    [PACK_STORE, PROGRESS_STORE, LIBRARY_STORE],
+    [PACK_STORE, PROGRESS_STORE, LIBRARY_STORE, HISTORY_STORE],
     'readwrite',
   )
   tx.objectStore(PACK_STORE).delete(id)
   tx.objectStore(PROGRESS_STORE).delete(id)
   tx.objectStore(LIBRARY_STORE).delete(id)
+  tx.objectStore(HISTORY_STORE).delete(id)
   await transactionDone(tx)
 }
 
