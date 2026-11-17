@@ -1,16 +1,21 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
   Controls,
+  Handle,
   MarkerType,
   MiniMap,
+  Position,
   ReactFlow,
   type Edge,
   type Node,
   type NodeProps,
+  type ReactFlowInstance,
 } from '@xyflow/react'
 import dagre from 'dagre'
 import type { Graph } from '../lib/graph'
+import { computeGraphView } from '../lib/graphView'
+import type { KnotSelection } from '../lib/types'
 import '@xyflow/react/dist/style.css'
 
 export interface KnotNodeData extends Record<string, unknown> {
@@ -25,13 +30,17 @@ export interface KnotNodeData extends Record<string, unknown> {
   deadEnd: boolean
   unreachable: boolean
   covered: boolean
+  hasChildren: boolean
+  collapsed: boolean
+  selected: boolean
+  onToggle?: (id: string) => void
 }
 
 const NODE_WIDTH = 176
 const NODE_HEIGHT = 58
 const NODE_TYPES = { knot: KnotNode }
 
-function KnotNode({ data }: NodeProps) {
+function KnotNode({ id, data }: NodeProps) {
   const node = data as KnotNodeData
   const className = [
     'knot-card',
@@ -40,6 +49,7 @@ function KnotNode({ data }: NodeProps) {
     node.deadEnd ? 'dead-end' : '',
     node.unreachable ? 'unreachable' : '',
     node.entry ? 'entry' : '',
+    node.selected ? 'selected' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -56,11 +66,35 @@ function KnotNode({ data }: NodeProps) {
 
   return (
     <div className={className}>
+      <Handle
+        type="target"
+        position={Position.Left}
+        isConnectable={false}
+      />
       <div className="knot-title-row">
         {node.covered && <span className="knot-dot" />}
         <span className="knot-title">{node.label}</span>
+        {node.hasChildren && (
+          <button
+            type="button"
+            className="knot-toggle nodrag"
+            aria-label={`${node.collapsed ? 'Expand' : 'Collapse'} ${node.label}`}
+            aria-expanded={!node.collapsed}
+            onClick={(event) => {
+              event.stopPropagation()
+              node.onToggle?.(id)
+            }}
+          >
+            {node.collapsed ? '+' : '−'}
+          </button>
+        )}
       </div>
       <div className="knot-meta">{meta}</div>
+      <Handle
+        type="source"
+        position={Position.Right}
+        isConnectable={false}
+      />
     </div>
   )
 }
@@ -68,16 +102,35 @@ function KnotNode({ data }: NodeProps) {
 interface KnotGraphProps {
   graph: Graph
   visited: Set<string>
-  onJump: (line: number, file?: string) => void
+  selectedId: string | null
+  onSelect: (node: KnotSelection) => void
   onResetCoverage?: () => void
 }
 
 export default function KnotGraph({
   graph,
   visited,
-  onJump,
+  selectedId,
+  onSelect,
   onResetCoverage,
 }: KnotGraphProps) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  const flowRef = useRef<ReactFlowInstance<Node<KnotNodeData>, Edge> | null>(
+    null,
+  )
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      void flowRef.current?.fitView({ padding: 0.2 })
+    }, 60)
+    return () => window.clearTimeout(handle)
+  }, [selectedId])
+
+  const { visibleNodes, visibleEdges, cycleEdges } = useMemo(
+    () => computeGraphView(graph, collapsed),
+    [graph, collapsed],
+  )
+
   const { nodes, edges } = useMemo(() => {
     const layout = new dagre.graphlib.Graph()
     layout.setGraph({
@@ -89,15 +142,20 @@ export default function KnotGraph({
     })
     layout.setDefaultEdgeLabel(() => ({}))
 
-    for (const node of graph.nodes) {
+    for (const node of visibleNodes) {
       layout.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT })
     }
-    for (const edge of graph.edges) {
-      if (edge.source !== edge.target) layout.setEdge(edge.source, edge.target)
+    for (const edge of visibleEdges) {
+      if (
+        edge.source !== edge.target &&
+        !cycleEdges.has(edge.id)
+      ) {
+        layout.setEdge(edge.source, edge.target)
+      }
     }
     dagre.layout(layout)
 
-    const nodes: Node<KnotNodeData>[] = graph.nodes.map((node) => {
+    const nodes: Node<KnotNodeData>[] = visibleNodes.map((node) => {
       const position = layout.node(node.id)
       return {
         id: node.id,
@@ -118,21 +176,55 @@ export default function KnotGraph({
           deadEnd: node.deadEnd,
           unreachable: node.unreachable,
           covered: visited.has(node.id),
+          hasChildren: graph.edges.some((edge) => edge.source === node.id),
+          collapsed: collapsed.has(node.id),
+          selected: node.id === selectedId,
+          onToggle: (id: string) => {
+            setCollapsed((previous) => {
+              const next = new Set(previous)
+              if (next.has(id)) next.delete(id)
+              else next.add(id)
+              return next
+            })
+          },
         },
         style: { width: NODE_WIDTH, height: NODE_HEIGHT },
       }
     })
 
-    const edges: Edge[] = graph.edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#6b7085' },
-      style: { stroke: '#6b7085', strokeWidth: 1.4 },
-    }))
+    const edges: Edge[] = visibleEdges.map((edge) => {
+      const cycle = cycleEdges.has(edge.id)
+      const highlighted =
+        selectedId === edge.source || selectedId === edge.target
+      const color = highlighted ? '#c084fc' : cycle ? '#f59e0b' : '#aab3c5'
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color,
+          width: 18,
+          height: 18,
+        },
+        style: {
+          stroke: color,
+          strokeWidth: highlighted ? 3.2 : 2.4,
+          strokeDasharray: cycle ? '6 4' : undefined,
+        },
+      }
+    })
 
     return { nodes, edges }
-  }, [graph, visited])
+  }, [
+    visibleNodes,
+    visibleEdges,
+    cycleEdges,
+    collapsed,
+    visited,
+    selectedId,
+    graph.edges,
+  ])
 
   const realNodes = graph.nodes.filter((node) => !node.missing)
   const coveredCount = realNodes.filter((node) => visited.has(node.id)).length
@@ -166,9 +258,36 @@ export default function KnotGraph({
         <span>
           <i className="lg missing" /> missing
         </span>
+        <span>
+          <i className="lg loop" /> loop
+        </span>
         <span className="legend-count">
           {coveredCount}/{realNodes.length} covered
         </span>
+        <button
+          type="button"
+          className="legend-reset"
+          onClick={() => setCollapsed(new Set())}
+        >
+          Expand all
+        </button>
+        <button
+          type="button"
+          className="legend-reset"
+          onClick={() =>
+            setCollapsed(
+              new Set(
+                graph.nodes
+                  .filter((node) =>
+                    graph.edges.some((edge) => edge.source === node.id),
+                  )
+                  .map((node) => node.id),
+              ),
+            )
+          }
+        >
+          Collapse all
+        </button>
         {onResetCoverage && (
           <button
             type="button"
@@ -185,13 +304,23 @@ export default function KnotGraph({
         nodeTypes={NODE_TYPES}
         fitView
         minZoom={0.2}
-        proOptions={{ hideAttribution: true }}
         nodesConnectable={false}
         nodesFocusable
         aria-label="Knot map"
-        onNodeClick={(_, node) => {
+        onInit={(instance) => {
+          flowRef.current = instance
+        }}
+        onNodeClick={(event, node) => {
+          if ((event.target as HTMLElement).closest('.knot-toggle')) return
           const data = node.data as KnotNodeData
-          if (data.line > 0) onJump(data.line, data.file)
+          if (data.line > 0) {
+            onSelect({
+              id: node.id,
+              file: data.file,
+              line: data.line,
+              kind: data.kind,
+            })
+          }
         }}
       >
         <Background color="#232633" gap={20} />

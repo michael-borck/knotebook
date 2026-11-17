@@ -28,9 +28,11 @@ Custom domain: CNAME `knotebook` → `michael-borck.github.io` (DNS-only, no pro
 Knotebook is two apps in one codebase:
 
 - **Knotebook Studio** — Tauri desktop app: write, compile, preview, lint,
-  theme, and build self-contained packs. Includes a **knot map** (React Flow)
-  with coverage, dead-end and unreachable highlighting — click a knot to jump to
-  its line — and an **AI assistant** with diff review and snapshots.
+  theme, and build self-contained packs. The **knot map** is the default view:
+  click a knot to edit it in a side drawer, use the chevrons to expand or
+  collapse branches, and loop-backs render as dashed edges. It also shows
+  coverage, dead-end and unreachable highlighting, and an **AI assistant** with
+  diff review and snapshots.
 - **Knotebook Player** — PWA: install packs, play offline, save progress.
 
 Themes reuse the Swipeverse art sets (`noir`, `kingdom`, `cyberpunk`, …).

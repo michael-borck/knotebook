@@ -79,8 +79,11 @@ highlighting.
   `INCLUDE`; entry knots and missing targets are detected.
 - `src/components/KnotGraph.tsx` lays the graph out with dagre and renders it
   with React Flow.
-- Studio **Text / Map** toggle; click a knot to jump to its line; the entry knot
-  is highlighted; missing targets are red.
+- Studio **Text / Map** toggle; the map is the default view. Click a knot to
+  open a side drawer and edit just that knot; chevrons expand/collapse branches,
+  and loop-backs are dashed amber edges with a cycle-aware layout.
+- Use **Open in text** in the drawer to jump to the knot's line; the entry knot
+  is highlighted and missing targets are red.
 - **Coverage**: knots visited by the live preview get a green dot; the legend
   shows `X/Y covered`.
 - **Dead ends**: a knot with no diverts, no choices and no `-> END` is flagged.

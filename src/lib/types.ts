@@ -20,3 +20,10 @@ export interface PlayView {
   choices: ChoiceView[]
   ended: boolean
 }
+
+export interface KnotSelection {
+  id: string
+  file: string
+  line: number
+  kind: 'knot' | 'stitch'
+}

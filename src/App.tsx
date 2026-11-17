@@ -50,9 +50,12 @@ import { buildH5pPackage } from './lib/h5p'
 import { firstImageTag } from './lib/tags'
 import { parseGraph } from './lib/graph'
 import KnotGraph from './components/KnotGraph'
+import KnotDrawer from './components/KnotDrawer'
 import AiPanel from './components/AiPanel'
 import { clearCoverage, loadCoverage, saveCoverage } from './lib/coverage'
-import type { Issue, PlayView } from './lib/types'
+import { replaceBlock } from './lib/inkSource'
+import { saveSnapshot } from './lib/snapshots'
+import type { Issue, KnotSelection, PlayView } from './lib/types'
 import './App.css'
 
 const EMPTY_PLAY: PlayView = {
@@ -90,10 +93,11 @@ function App() {
   const [fileContents, setFileContents] = useState<Record<string, string>>({})
   const [assets, setAssets] = useState<string[]>([])
   const [previewAsset, setPreviewAsset] = useState<string | null>(null)
+  const [selectedKnot, setSelectedKnot] = useState<KnotSelection | null>(null)
   const [editorView, setEditorView] = useState<'text' | 'map'>(() =>
-    new URLSearchParams(window.location.search).get('view') === 'map'
-      ? 'map'
-      : 'text',
+    new URLSearchParams(window.location.search).get('view') === 'text'
+      ? 'text'
+      : 'map',
   )
   const [visited, setVisited] = useState<Set<string>>(() => loadCoverage('sample'))
   const visitedRef = useRef(visited)
@@ -111,6 +115,10 @@ function App() {
       : path
         ? `file:${path}`
         : 'sample'
+
+  useEffect(() => {
+    setSelectedKnot(null)
+  }, [coverageKey])
 
   useEffect(() => {
     visitedRef.current = visited
@@ -264,18 +272,24 @@ function App() {
     return parseGraph({ 'story.ink': source })
   }, [source, fileContents, activeFile])
 
-  const validateSource = (candidate: string): Issue[] => {
-    const input =
-      activeFile && Object.keys(fileContents).length > 0
-        ? {
-            files: { ...fileContents, [activeFile]: candidate },
-            rootFile: activeFile,
-          }
-        : undefined
-    return [...compileInk(candidate, input).issues, ...lintInk(candidate, bible)]
+  const currentFile = activeFile ?? 'story.ink'
+  const validateFile = (relative: string, candidate: string): Issue[] => {
+    const files = { ...fileContents, [relative]: candidate }
+    return [
+      ...compileInk(candidate, { files, rootFile: relative }).issues,
+      ...lintInk(candidate, bible),
+    ]
   }
 
-  const currentFile = activeFile ?? 'story.ink'
+  const validateSource = (candidate: string): Issue[] =>
+    validateFile(currentFile, candidate)
+
+  const selectedKnotSource =
+    selectedKnot == null
+      ? ''
+      : selectedKnot.file === currentFile
+        ? source
+        : (fileContents[selectedKnot.file] ?? '')
   const knotOptions = useMemo(
     () =>
       graph.nodes
@@ -409,6 +423,7 @@ function App() {
     const assetFiles = await listAssetFiles(root)
     setAssets(assetFiles)
     setPreviewAsset(null)
+    setSelectedKnot(null)
     await loadProjectFile(root, preferred, files)
     const bibleRaw = await readOptionalTextFile(
       joinPath(root, 'knotebook.bible.json'),
@@ -455,12 +470,52 @@ function App() {
     }
   }
 
+  const applyKnot = (draft: string): boolean => {
+    if (!selectedKnot) return false
+    const relative = selectedKnot.file
+    const fileSource =
+      relative === currentFile ? source : (fileContents[relative] ?? '')
+    const merged = replaceBlock(fileSource, selectedKnot.id, draft)
+    if (!merged) {
+      setToast('Could not apply that knot.')
+      return false
+    }
+    const key =
+      relative === currentFile
+        ? coverageKey
+        : projectRoot
+          ? `project:${projectRoot}::${relative}`
+          : `file:${relative}`
+    saveSnapshot(key, fileSource, 'Before map edit')
+    if (relative === currentFile) {
+      setSource(merged)
+    } else {
+      setFileContents((previous) => ({ ...previous, [relative]: merged }))
+      if (projectRoot && runningInTauri()) {
+        void backupAndWrite(
+          joinPath(projectRoot, relative),
+          merged,
+          joinPath(projectRoot, '.knotebook/backups'),
+        ).catch(() => setToast('Could not save that file'))
+      }
+    }
+    setToast(`Applied ${selectedKnot.id}`)
+    return true
+  }
+
   const handleGraphJump = async (line: number, file?: string) => {
     if (file && projectRoot && file !== activeFile && file !== 'story.ink') {
       await loadProjectFile(projectRoot, file)
     }
     pendingJump.current = line
     setEditorView('text')
+  }
+
+  const openKnotInText = () => {
+    if (!selectedKnot) return
+    const { line, file } = selectedKnot
+    setSelectedKnot(null)
+    void handleGraphJump(line, file)
   }
 
   useEffect(() => {
@@ -486,6 +541,7 @@ function App() {
     setFileContents({})
     setAssets([])
     setPreviewAsset(null)
+    setSelectedKnot(null)
     setVisited(loadCoverage(`file:${file.path}`))
     setSource(file.text)
     setPath(file.path)
@@ -826,12 +882,30 @@ function App() {
                 }}
               />
             ) : (
-              <KnotGraph
-                graph={graph}
-                visited={visited}
-                onJump={(line, file) => void handleGraphJump(line, file)}
-                onResetCoverage={handleResetCoverage}
-              />
+              <div className="map-with-drawer">
+                <div className="map-canvas">
+                  <KnotGraph
+                    graph={graph}
+                    visited={visited}
+                    selectedId={selectedKnot?.id ?? null}
+                    onSelect={(node) => setSelectedKnot(node)}
+                    onResetCoverage={handleResetCoverage}
+                  />
+                </div>
+                {selectedKnot && (
+                  <KnotDrawer
+                    key={`${selectedKnot.file}:${selectedKnot.id}`}
+                    knot={selectedKnot}
+                    source={selectedKnotSource}
+                    validate={(candidate) =>
+                      validateFile(selectedKnot.file, candidate)
+                    }
+                    onApply={applyKnot}
+                    onClose={() => setSelectedKnot(null)}
+                    onOpenInText={openKnotInText}
+                  />
+                )}
+              </div>
             )}
           </div>
         </section>

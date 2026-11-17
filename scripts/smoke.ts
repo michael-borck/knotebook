@@ -7,6 +7,7 @@ import { countWords, lintInk } from '../src/lib/lint'
 import { DEFAULT_BIBLE } from '../src/lib/bible'
 import { buildPack, parsePack } from '../src/lib/pack'
 import { parseGraph } from '../src/lib/graph'
+import { computeGraphView } from '../src/lib/graphView'
 import { compareVersions } from '../src/lib/version'
 import {
   DEFAULT_AI_SETTINGS,
@@ -16,7 +17,13 @@ import {
   generateInk,
   generateWithRetry,
 } from '../src/lib/ai'
-import { mergeKnotEdits, replaceKnot, sliceKnot } from '../src/lib/inkSource'
+import {
+  mergeKnotEdits,
+  replaceBlock,
+  replaceKnot,
+  sliceBlock,
+  sliceKnot,
+} from '../src/lib/inkSource'
 import {
   buildChoiceScript,
   buildStoryModel,
@@ -310,6 +317,18 @@ check(
   'replaceKnot missing knot',
   replaceKnot(knotSource, 'nope', 'x') === null,
 )
+
+const stitchSource = '=== a ===\nIntro\n\n= one\nOne\n\n= two\nTwo\n-> END\n'
+check(
+  'slice block stitch',
+  sliceBlock(stitchSource, 'a.one') === '= one\nOne',
+)
+const replacedStitch = replaceBlock(stitchSource, 'a.one', 'One revised')
+check(
+  'replace stitch keeps siblings',
+  replacedStitch?.includes('One revised') === true &&
+    replacedStitch?.includes('= two') === true,
+)
 const mergeSource = '=== a ===\nA\n\n=== b ===\nB\n-> END\n'
 const mergedEdits = mergeKnotEdits(
   mergeSource,
@@ -450,6 +469,19 @@ check(
   'graph marks entry',
   graph.nodes.find((node) => node.id === 'start')?.entry === true,
 )
+
+const allView = computeGraphView(graph, new Set())
+check(
+  'map shows all nodes',
+  allView.visibleNodes.length === graph.nodes.length,
+)
+const collapsedStart = computeGraphView(graph, new Set(['start']))
+check(
+  'map collapse hides branch',
+  collapsedStart.visibleIds.has('start') &&
+    !collapsedStart.visibleIds.has('climb'),
+)
+check('map marks loop edges', allView.cycleEdges.size > 0)
 
 const multiGraph = parseGraph(multiFiles)
 check(
