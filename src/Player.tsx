@@ -659,6 +659,18 @@ export default function Player() {
                     className="pack-card"
                     style={{ borderColor: entryTheme.accent }}
                   >
+                    {entry.cover ? (
+                      <img className="pack-cover" src={entry.cover} alt="" />
+                    ) : (
+                      <div
+                        className="pack-cover store-art-fallback"
+                        aria-hidden="true"
+                        style={{
+                          borderColor: entryTheme.accent,
+                          background: `linear-gradient(135deg, ${entryTheme.bg}, ${entryTheme.accent}33)`,
+                        }}
+                      />
+                    )}
                     <div className="pack-theme">
                       {entryTheme.title} · v{catalogueRelease}
                       {installedEntry

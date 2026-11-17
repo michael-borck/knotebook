@@ -109,7 +109,8 @@ Exit: install a pack, play offline, progress survives reload.
 - Studio **Build pack** writes `<slug>.knotebook.json` (manifest + compiled
   story JSON + `assets` as data URLs + optional `cover`).
 - Project **assets**: `assets/` listing, **Add image…**, and `cover.*`
-  auto-detected as the pack cover.
+  auto-detected as the pack cover; if there is no `cover.*`, the first image
+  asset is used.
 - Player at `?player=1` (`src/Player.tsx`): import pack, library, play, restore
   progress, restart, themes, cover art, and scene images from `# image:` /
   `# bg:` tags that point at `assets/...`.

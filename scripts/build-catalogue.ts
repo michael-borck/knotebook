@@ -57,6 +57,7 @@ const packs = collect(dir)
       release?: string
       description?: string
       licence?: string
+      cover?: string
     }
     if (
       pack.format !== 'knotebook-pack' ||
@@ -84,6 +85,7 @@ const packs = collect(dir)
       url,
       description: pack.description,
       licence: pack.licence,
+      cover: pack.cover,
       signature,
     }
   })

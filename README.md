@@ -135,8 +135,10 @@ cd src-tauri && cargo check
 A **pack** is one self-contained `.knotebook.json` file: manifest, compiled ink,
 assets and cover. Import it directly, or publish it through a static catalogue.
 
-- Build a pack in Studio → **Build pack**.
+- Build a pack in Studio → **Build pack**. Use `assets/cover.*` for a cover; if
+  there is no cover image, the first image asset is used.
 - Player → **Import pack**, or → **Store** with `?store=<catalogue-url>`.
+- Catalogue entries can include a `cover` (data URL or URL) for the Store card.
 - Catalogue format, submission flow and signing: [`docs/STORE.md`](docs/STORE.md).
 
 Demo store is generated with `npm run store:demo` (six demo packs across six

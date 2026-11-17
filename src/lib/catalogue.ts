@@ -17,6 +17,7 @@ export interface CatalogueEntry {
   url: string
   description?: string
   licence?: string
+  cover?: string
   signature?: string
 }
 
@@ -38,6 +39,7 @@ function isEntry(value: unknown): value is CatalogueEntry {
     (entry.release === undefined || typeof entry.release === 'string') &&
     typeof entry.sha256 === 'string' &&
     typeof entry.url === 'string' &&
+    (entry.cover === undefined || typeof entry.cover === 'string') &&
     (entry.signature === undefined || typeof entry.signature === 'string')
   )
 }

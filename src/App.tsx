@@ -593,7 +593,7 @@ function App() {
         try {
           const dataUrl = await readAssetDataUrl(joinPath(projectRoot, asset))
           assetData[asset] = dataUrl
-          if (asset === coverAsset) cover = dataUrl
+          if (asset === coverAsset || !cover) cover = dataUrl
         } catch {
           // Skip unreadable assets; the artifact is still buildable.
         }

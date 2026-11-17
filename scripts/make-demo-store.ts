@@ -187,12 +187,75 @@ function escapeXml(value: string): string {
     .replace(/"/g, '&quot;')
 }
 
-function coverDataUrl(title: string, accent: string, bg: string): string {
+function artwork(id: string, accent: string): string {
+  switch (id) {
+    case 'the-lantern-keepers':
+      return `
+<circle cx="470" cy="78" r="44" fill="${accent}" opacity="0.18"/>
+<circle cx="470" cy="78" r="25" fill="${accent}" opacity="0.45"/>
+<path d="M0 250 Q150 228 300 250 T600 250 V360 H0Z" fill="${accent}" opacity="0.08"/>
+<path d="M0 282 Q150 260 300 282 T600 282" fill="none" stroke="${accent}" stroke-width="2" opacity="0.3"/>
+<rect x="105" y="170" width="58" height="82" rx="7" fill="#101117" stroke="${accent}" stroke-width="3"/>
+<rect x="118" y="188" width="32" height="46" fill="${accent}" opacity="0.5"/>
+<circle cx="134" cy="211" r="26" fill="${accent}" opacity="0.10"/>
+`
+    case 'the-clockwork-court':
+      return `
+<circle cx="130" cy="110" r="46" fill="none" stroke="${accent}" stroke-width="5" opacity="0.8"/>
+<circle cx="130" cy="110" r="18" fill="${accent}" opacity="0.5"/>
+<circle cx="470" cy="140" r="34" fill="none" stroke="${accent}" stroke-width="4" opacity="0.6"/>
+<circle cx="470" cy="140" r="12" fill="${accent}" opacity="0.4"/>
+<path d="M240 250 V160 H280 V250 M320 250 V120 H360 V250 M400 250 V180 H440 V250" fill="${accent}" opacity="0.18" stroke="${accent}" stroke-width="2"/>
+<path d="M0 250 H600" stroke="${accent}" stroke-width="2" opacity="0.5"/>
+`
+    case 'neon-rain':
+      return `
+<path d="M0 250 V150 H60 V250 M80 250 V110 H140 V250 M160 250 V170 H210 V250 M230 250 V90 H300 V250 M320 250 V140 H380 V250 M400 250 V120 H470 V250 M490 250 V170 H550 V250 M570 250 V140 H600 V250" fill="${accent}" opacity="0.14"/>
+<path d="M70 130 H120 M250 80 H290 M410 130 H460" stroke="${accent}" stroke-width="4" opacity="0.6"/>
+<g stroke="${accent}" stroke-width="1.5" opacity="0.35">
+<path d="M60 40 L30 120 M140 20 L110 100 M220 40 L190 120 M300 20 L270 100 M380 40 L350 120 M460 20 L430 100 M540 40 L510 120"/>
+</g>
+`
+    case 'the-drowned-bell':
+      return `
+<path d="M0 230 Q80 200 160 230 T320 230 T480 230 T600 230 V360 H0Z" fill="${accent}" opacity="0.12"/>
+<path d="M0 265 Q80 235 160 265 T320 265 T480 265 T600 265" fill="none" stroke="${accent}" stroke-width="3" opacity="0.35"/>
+<path d="M300 120 Q340 160 340 205 H260 Q260 160 300 120Z" fill="${accent}" opacity="0.4" stroke="${accent}" stroke-width="3"/>
+<circle cx="300" cy="220" r="8" fill="${accent}" opacity="0.7"/>
+`
+    case 'the-hollow-house':
+      return `
+<path d="M150 250 V140 L300 60 L450 140 V250Z" fill="${accent}" opacity="0.14" stroke="${accent}" stroke-width="3"/>
+<rect x="210" y="165" width="42" height="48" fill="${accent}" opacity="0.35"/>
+<rect x="348" y="165" width="42" height="48" fill="${accent}" opacity="0.35"/>
+<rect x="280" y="195" width="40" height="55" fill="#101117" stroke="${accent}" stroke-width="2"/>
+<path d="M300 60 V40" stroke="${accent}" stroke-width="3"/>
+`
+    case 'signal-from-europa':
+      return `
+<circle cx="420" cy="130" r="86" fill="${accent}" opacity="0.16"/>
+<circle cx="420" cy="130" r="86" fill="none" stroke="${accent}" stroke-width="3" opacity="0.55"/>
+<path d="M350 100 L390 120 L370 150 L420 170 L450 140 L490 155" fill="none" stroke="${accent}" stroke-width="2" opacity="0.6"/>
+<g fill="${accent}" opacity="0.6">
+<circle cx="90" cy="60" r="3"/><circle cx="150" cy="100" r="2"/><circle cx="230" cy="50" r="3"/><circle cx="300" cy="90" r="2"/><circle cx="540" cy="70" r="2"/>
+</g>
+`
+    default:
+      return `<circle cx="300" cy="140" r="80" fill="${accent}" opacity="0.2"/>`
+  }
+}
+
+function coverDataUrl(
+  id: string,
+  title: string,
+  accent: string,
+  bg: string,
+): string {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="360" viewBox="0 0 600 360">
 <rect width="600" height="360" fill="${bg}"/>
-<rect x="20" y="20" width="560" height="320" rx="16" fill="none" stroke="${accent}" stroke-width="3"/>
-<text x="44" y="150" fill="${accent}" font-family="Georgia, serif" font-size="44">${escapeXml(title)}</text>
-<text x="44" y="198" fill="#9a97a8" font-family="sans-serif" font-size="18">Knotebook demo</text>
+${artwork(id, accent)}
+<text x="44" y="312" fill="${accent}" font-family="Georgia, serif" font-size="40">${escapeXml(title)}</text>
+<text x="44" y="340" fill="#9a97a8" font-family="sans-serif" font-size="16">Knotebook demo</text>
 </svg>`
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`
 }
@@ -229,7 +292,7 @@ const packs = demos.map((demo) => {
     process.exit(1)
   }
   const theme = getTheme(demo.theme)
-  const cover = coverDataUrl(demo.title, theme.accent, theme.bg)
+  const cover = coverDataUrl(demo.id, demo.title, theme.accent, theme.bg)
   const assets: Record<string, string> = { 'assets/cover.svg': cover }
   if (demo.scene) {
     assets['assets/scene.svg'] = sceneDataUrl(theme.accent, theme.bg)
@@ -278,6 +341,7 @@ const catalogue = {
     url: `${demo.id}.knotebook.json`,
     description: pack.description,
     licence: pack.licence,
+    cover: pack.cover,
     signature,
   })),
 }

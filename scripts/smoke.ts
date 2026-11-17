@@ -622,6 +622,10 @@ check(
 check('demo pack parses', parsePack(demoPackBytes.toString('utf8')).pack !== null)
 const demoStore = demoCatalogue.catalogue
 const demoStoreKey = demoStore?.publicKey
+check(
+  'demo catalogue includes cover art',
+  demoStore?.packs[0]?.cover?.startsWith('data:') === true,
+)
 for (const entry of demoStore?.packs ?? []) {
   const bytes = readFileSync(`public/${entry.url}`)
   check(

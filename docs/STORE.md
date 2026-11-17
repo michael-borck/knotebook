@@ -33,7 +33,8 @@ store is signed; self-hosted catalogues can override the key at build time.
 }
 ```
 
-`url` may be relative to the catalogue or absolute.
+`url` may be relative to the catalogue or absolute. `cover` is optional; when
+present it is a data URL or URL used on the Store card.
 
 ## Building a catalogue
 
