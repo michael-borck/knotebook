@@ -35,8 +35,8 @@ Knotebook is two apps in one codebase:
   It also shows coverage, dead-end and unreachable highlighting, and an **AI
   assistant** with diff review and snapshots.
 - **Knotebook Player** — PWA: install packs, play offline, save progress. The
-  Library keeps installed packs and recently played stories; the Store filters
-  by All / Installed / Updates and by theme.
+  Library keeps installed packs, the full recently-played list, and per-pack
+  version history; the Store filters by All / Installed / Updates and by theme.
 
 Themes reuse the Swipeverse art sets (`noir`, `kingdom`, `cyberpunk`, …).
 

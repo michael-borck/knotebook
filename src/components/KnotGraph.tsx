@@ -7,6 +7,7 @@ import {
   MiniMap,
   Position,
   ReactFlow,
+  useNodesState,
   type Edge,
   type Node,
   type NodeProps,
@@ -163,6 +164,9 @@ export default function KnotGraph({
   const [positions, setPositions] = useState<Record<string, MapPosition>>(
     () => loadMapState(stateKey).positions,
   )
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<KnotNodeData>>(
+    [],
+  )
   const flowRef = useRef<ReactFlowInstance<Node<KnotNodeData>, Edge> | null>(
     null,
   )
@@ -186,7 +190,7 @@ export default function KnotGraph({
     [graph, collapsed],
   )
 
-  const { nodes, edges } = useMemo(() => {
+  const { nodes: layoutNodes, edges } = useMemo(() => {
     const layout = new dagre.graphlib.Graph()
     layout.setGraph({
       rankdir: 'LR',
@@ -211,17 +215,17 @@ export default function KnotGraph({
     dagre.layout(layout)
 
     const nodes: Node<KnotNodeData>[] = visibleNodes.map((node) => {
-      const position = positions[node.id] ?? layout.node(node.id)
+      const manual = positions[node.id]
+      const position = manual ?? layout.node(node.id)
+      const x = manual ? manual.x : (position?.x ?? 0) - NODE_WIDTH / 2
+      const y = manual ? manual.y : (position?.y ?? 0) - NODE_HEIGHT / 2
       const note = tagValue(node.tags, 'note')
       const group =
         tagValue(node.tags, 'group') ?? tagValue(node.tags, 'chapter')
       return {
         id: node.id,
         type: 'knot',
-        position: {
-          x: (position?.x ?? 0) - NODE_WIDTH / 2,
-          y: (position?.y ?? 0) - NODE_HEIGHT / 2,
-        },
+        position: { x, y },
         data: {
           label: node.label,
           file: node.file,
@@ -286,6 +290,10 @@ export default function KnotGraph({
     selectedId,
     graph.edges,
   ])
+
+  useEffect(() => {
+    setNodes(layoutNodes)
+  }, [layoutNodes, setNodes])
 
   const realNodes = graph.nodes.filter((node) => !node.missing)
   const coveredCount = realNodes.filter((node) => visited.has(node.id)).length
@@ -374,6 +382,7 @@ export default function KnotGraph({
       <ReactFlow
         nodes={nodes}
         edges={edges}
+        onNodesChange={onNodesChange}
         nodeTypes={NODE_TYPES}
         fitView
         minZoom={0.2}

@@ -214,6 +214,8 @@
   list-style: none;
   margin: 0;
   padding: 0;
+  max-height: 220px;
+  overflow: auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -300,9 +302,28 @@
 
 .pack-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: auto;
   padding-top: 10px;
+}
+
+.version-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 6px 0 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 140px;
+  overflow: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.version-list li {
+  line-height: 1.4;
 }
 
 .pack-actions button,

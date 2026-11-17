@@ -113,12 +113,13 @@ Exit: install a pack, play offline, progress survives reload.
 - Player at `?player=1` (`src/Player.tsx`): import pack, library, play, restore
   progress, restart, themes, cover art, and scene images from `# image:` /
   `# bg:` tags that point at `assets/...`.
-- Library keeps installed packs and **recently played** stories; the Store filters
-  by All / Installed / Updates and by theme.
+- Library keeps installed packs, the full **recently played** list, and
+  **per-pack version history**; the Store filters by All / Installed / Updates
+  and by theme.
 - Standalone **HTML export** now embeds `cover` + `assets` and renders scene
   images, matching the pack artifact.
 - Storage is **IndexedDB** (`src/lib/storage.ts`: `packs`, `progress`, `library`,
-  `history`).
+  `history`, `packHistory`).
 - PWA shell: `public/manifest.webmanifest`, `public/sw.js`, icons; the service
   worker registers in browsers only (not in Tauri).
 

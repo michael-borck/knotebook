@@ -26,6 +26,7 @@ import {
   clearHistory,
   clearProgress,
   installPack,
+  listAllPackHistory,
   listHistory,
   listLibrary,
   loadPack,
@@ -35,6 +36,7 @@ import {
   saveProgress,
   type HistoryEntry,
   type LibraryEntry,
+  type PackVersion,
 } from './lib/storage'
 import type { PlayView } from './lib/types'
 import './player.css'
@@ -46,6 +48,10 @@ type View = 'library' | 'store'
 export default function Player() {
   const [library, setLibrary] = useState<LibraryEntry[]>([])
   const [history, setHistory] = useState<HistoryEntry[]>([])
+  const [packVersions, setPackVersions] = useState<
+    Record<string, PackVersion[]>
+  >({})
+  const [expandedPack, setExpandedPack] = useState<string | null>(null)
   const [view, setView] = useState<View>('library')
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null)
   const [catalogueError, setCatalogueError] = useState<string | null>(null)
@@ -123,7 +129,12 @@ export default function Player() {
     let active = true
     listLibrary()
       .then((entries) => {
-        if (active) setLibrary(entries)
+        if (!active) return undefined
+        setLibrary(entries)
+        return listAllPackHistory()
+      })
+      .then((versions) => {
+        if (active && versions) setPackVersions(versions)
       })
       .catch(() => undefined)
     listHistory()
@@ -251,6 +262,7 @@ export default function Player() {
     try {
       await installPack(imported)
       setLibrary(await listLibrary())
+      setPackVersions(await listAllPackHistory())
       setToast(`Installed ${imported.title}`)
     } catch (error) {
       setToast(
@@ -318,6 +330,7 @@ export default function Player() {
       if (!imported) throw new Error(error ?? 'Invalid pack.')
       await installPack(imported)
       setLibrary(await listLibrary())
+      setPackVersions(await listAllPackHistory())
       setToast(`Installed ${imported.title}`)
     } catch (error) {
       setToast(error instanceof Error ? error.message : 'Install failed.')
@@ -443,7 +456,7 @@ export default function Player() {
                 </button>
               </div>
               <ul className="recent-list">
-                {history.slice(0, 6).map((entry) => (
+                {history.map((entry) => (
                   <li key={entry.id}>
                     <button
                       type="button"
@@ -497,7 +510,35 @@ export default function Player() {
                       >
                         Remove
                       </button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        aria-expanded={expandedPack === entry.id}
+                        onClick={() =>
+                          setExpandedPack(
+                            expandedPack === entry.id ? null : entry.id,
+                          )
+                        }
+                      >
+                        History
+                      </button>
                     </div>
+                    {expandedPack === entry.id && (
+                      <ul className="version-list">
+                        {(packVersions[entry.id] ?? []).length === 0 ? (
+                          <li className="muted small">
+                            No version history yet.
+                          </li>
+                        ) : (
+                          packVersions[entry.id].map((version) => (
+                            <li key={`${version.release}-${version.installed}`}>
+                              v{version.release} ·{' '}
+                              {new Date(version.installed).toLocaleString()}
+                            </li>
+                          ))
+                        )}
+                      </ul>
+                    )}
                   </li>
                 )
               })}
